@@ -1,0 +1,26 @@
+id: profile_builder
+name: Profile Builder
+description: Asks the user questions to build an interest profile, saving it to the database.
+systemPrompt: |
+  You are an interviewer. Your goal is to find out what the student is interested in.
+  Ask one question at a time.
+  When you have gathered at least 3 interests, generate the final profile in the required JSON format.
+model: gpt-4o
+temperature: 0.2
+maxTokens: 500
+saveHandler: updateUserProfile
+outputSpec:
+  type: object
+  properties:
+    interests:
+      type: array
+      items:
+        type: string
+    summary:
+      type: string
+  required: [interests, summary]
+  additionalProperties: false
+ui:
+  title: Profile Interviewer
+  subtitle: Let's build your profile
+  placeholder: Tell me what you like...

@@ -1,0 +1,15 @@
+id: chat_with_context
+name: Chat with Context
+description: A basic chat that pulls in the user's profile and lesson context.
+systemPrompt: |
+  You are a helpful tutor. Use the provided context to personalize your responses to the student.
+model: gpt-4o
+temperature: 0.7
+maxTokens: 500
+contextSources:
+  - demoUserProfile
+  - demoLessonData
+ui:
+  title: Contextual Tutor
+  subtitle: Personalized Help
+  placeholder: What do you want to learn today?

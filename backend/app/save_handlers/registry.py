@@ -53,13 +53,19 @@ async def update_user_profile(session_id: str, user_id: str, prototype_id: str, 
     """
     from app.services.firestore_service import firestore_service
 
+    # Create a copy so we don't mutate the original dictionary which is
+    # returned to the frontend and serialized by FastAPI.
+    payload = data.copy()
+
     if firestore_service.db:
         from google.cloud import firestore
-        data["updated_at"] = firestore.SERVER_TIMESTAMP
-        await firestore_service.set_document("users", user_id, data)
+        payload["updated_at"] = firestore.SERVER_TIMESTAMP
+        await firestore_service.set_document("users", user_id, payload)
         print(f"User profile for {user_id} updated.")
     else:
-        print(f"Firestore disabled. Would have updated user {user_id} with: {json.dumps(data)}")
+        import datetime
+        payload["updated_at"] = datetime.datetime.now().isoformat()
+        print(f"Firestore disabled. Would have updated user {user_id} with: {json.dumps(payload)}")
 
 # Register them
 registry.register("defaultArtifactSave", default_artifact_save)

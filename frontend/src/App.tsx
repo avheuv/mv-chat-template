@@ -41,7 +41,14 @@ function App() {
       .then(r => r.json())
       .then(data => {
         setPrototypes(data);
-        if (data.length > 0) {
+
+        // Check URL for prototype query param (e.g. ?prototype=profile_builder)
+        const params = new URLSearchParams(window.location.search);
+        const urlPrototype = params.get('prototype');
+
+        if (urlPrototype && data.find((p: Prototype) => p.id === urlPrototype)) {
+          setSelectedPrototype(urlPrototype);
+        } else if (data.length > 0) {
           setSelectedPrototype(data[0].id);
         }
       })

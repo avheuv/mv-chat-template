@@ -37,8 +37,28 @@ async def demo_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
     lesson_code = inputs.get("lesson_code", "default")
     if lesson_code == "quadratics":
         return "LESSON DATA:\nTopic: Introduction to Quadratic Equations\nGoal: Understand the standard form ax^2 + bx + c = 0."
+    if lesson_code == "biology":
+        return "LESSON DATA:\nTopic: Cell Structure\nGoal: Understand the function of the mitochondria."
     return "LESSON DATA:\nTopic: General Math Review\nGoal: Practice core skills."
+
+async def fetch_student_interests(inputs: Dict[str, str], session_id: str) -> str:
+    """
+    Fetches the student profile from Firestore (saved by the profile_builder).
+    """
+    from app.services.firestore_service import firestore_service
+    user_id = inputs.get("user_id", "unknown")
+
+    if firestore_service.db:
+        doc = await firestore_service.get_document("users", user_id)
+        if doc and "interests" in doc:
+            interests_list = ", ".join(doc.get("interests", []))
+            summary = doc.get("summary", "")
+            return f"STUDENT INTERESTS:\nInterests: {interests_list}\nSummary: {summary}"
+
+    # Fallback/Mock if Firestore is missing or student isn't found
+    return f"STUDENT INTERESTS:\nInterests: video games, soccer\nSummary: {user_id} likes playing sports and gaming."
 
 # Register them
 registry.register("demoUserProfile", demo_user_profile)
 registry.register("demoLessonData", demo_lesson_data)
+registry.register("fetchStudentInterests", fetch_student_interests)

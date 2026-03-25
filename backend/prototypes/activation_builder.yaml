@@ -1,0 +1,35 @@
+id: activation_builder
+name: Activation Builder
+description: Generates an engaging lesson hook connecting a topic to a student's interests.
+systemPrompt: |
+  You are an expert instructional designer. Your task is to write an engaging 50-100 word activation hook that connects the provided lesson topic to the student's area of interest.
+  Select whichever single interest connects best to the topic, and use the student's name in the hook to make it personal.
+  Do not ask any follow up questions, simply provide the hook text.
+initialMessagePrompt: |
+  Create the activation hook now.
+model: gpt-4o
+temperature: 0.7
+maxTokens: 500
+contextSources:
+  - fetchStudentInterests
+  - demoLessonData
+ui:
+  title: Lesson Activation
+  subtitle: Generate a custom hook
+  placeholder: ""
+  readonly: true
+  inputs:
+    - id: user_id
+      label: Student Code
+      type: text
+      placeholder: Enter student ID
+    - id: lesson_code
+      label: Lesson Topic
+      type: select
+      options:
+        - label: Quadratic Equations
+          value: quadratics
+        - label: Cell Structure
+          value: biology
+        - label: General Math
+          value: default

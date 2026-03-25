@@ -6,12 +6,15 @@ from typing import List, Optional, Any, Dict
 class UIInputConfig(BaseModel):
     id: str
     label: str
+    type: str = "text" # can be "text" or "select"
     placeholder: Optional[str] = ""
+    options: Optional[List[Dict[str, str]]] = None # [{label: "Math", value: "math"}]
 
 class PrototypeUIConfig(BaseModel):
     title: str = "Chat"
     subtitle: str = ""
     placeholder: str = "Type your message..."
+    readonly: bool = False
     inputs: List[UIInputConfig] = Field(default_factory=lambda: [UIInputConfig(id="user_id", label="Student Code")])
 
 class PrototypeConfig(BaseModel):

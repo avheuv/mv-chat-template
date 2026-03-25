@@ -179,7 +179,6 @@ body {
   padding: 16px 18px;
   line-height: 1.6;
   font-size: 17px;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -271,7 +270,10 @@ body {
   margin-bottom: 0;
 }
 .markdown-content p {
-  margin: 0 0 12px;
+  margin: 0 0 8px; /* reduced space between normal paragraphs */
+}
+.markdown-content p:last-child {
+  margin-bottom: 0;
 }
 .markdown-content a {
   color: #2563eb;
@@ -287,18 +289,26 @@ body {
 .markdown-content em {
   font-style: italic;
 }
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 24px;
+  margin: 0 0 8px; /* tight space after list block */
+}
 .markdown-content ul {
   list-style-type: disc;
-  padding-left: 24px;
-  margin: 0 0 12px;
 }
 .markdown-content ol {
   list-style-type: decimal;
-  padding-left: 24px;
-  margin: 0 0 12px;
 }
 .markdown-content li {
-  margin-bottom: 6px;
+  margin: 0; /* completely remove margin around list items */
+  padding: 0;
+}
+/* Aggressively target paragraphs inside lists to prevent react-markdown wrapper bloat */
+.markdown-content li > p {
+  margin: 0;
+  padding: 0;
+  display: inline; /* force inline to prevent block spacing */
 }
 .markdown-content code {
   background-color: rgba(0, 0, 0, 0.05);

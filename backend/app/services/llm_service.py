@@ -20,10 +20,18 @@ class LLMService:
         """
         params = {
             "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens
+            "messages": messages
         }
+
+        # Newer reasoning models (o1, o3, and likely gpt-5+) do not support 'max_tokens'
+        # (they use 'max_completion_tokens' instead) and often reject 'temperature' entirely.
+        is_reasoning_model = any(model.startswith(prefix) for prefix in ["o1", "o3", "gpt-5"])
+
+        if is_reasoning_model:
+            params["max_completion_tokens"] = max_tokens
+        else:
+            params["temperature"] = temperature
+            params["max_tokens"] = max_tokens
 
         if output_schema:
             # We use tool calling instead of response_format so the AI can still

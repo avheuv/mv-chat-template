@@ -3,10 +3,16 @@ import yaml
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 
+class UIInputConfig(BaseModel):
+    id: str
+    label: str
+    placeholder: Optional[str] = ""
+
 class PrototypeUIConfig(BaseModel):
     title: str = "Chat"
     subtitle: str = ""
     placeholder: str = "Type your message..."
+    inputs: List[UIInputConfig] = Field(default_factory=lambda: [UIInputConfig(id="user_id", label="Student Code")])
 
 class PrototypeConfig(BaseModel):
     id: str

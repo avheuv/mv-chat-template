@@ -19,7 +19,7 @@ class ChatService:
         session = ChatSession(
             id=session_id,
             prototype_id=request.prototype_id,
-            user_id=request.user_id,
+            inputs=request.inputs,
             messages=[]
         )
 
@@ -28,7 +28,7 @@ class ChatService:
         for source in prototype.contextSources:
             builder = context_registry.get(source)
             if builder:
-                part = await builder(request.user_id, session_id)
+                part = await builder(request.inputs, session_id)
                 context_parts.append(f"[{source}]\n{part}")
             else:
                 print(f"Warning: Context builder '{source}' not found.")
@@ -111,7 +111,8 @@ class ChatService:
             handler = save_registry.get(prototype.saveHandler)
             if handler:
                 try:
-                    await handler(session.id, session.user_id, prototype.id, structured_data)
+                    user_id = session.inputs.get("user_id", "unknown")
+                    await handler(session.id, user_id, prototype.id, structured_data)
                 except Exception as e:
                     print(f"Error in save handler {prototype.saveHandler}: {e}")
             else:

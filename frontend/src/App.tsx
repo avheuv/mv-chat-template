@@ -3,6 +3,12 @@ import { useState, useEffect } from 'react';
 // API Base URL - hardcoded for dev, normally from env
 const API_BASE = 'http://localhost:8000/api';
 
+type UIInputConfig = {
+  id: string;
+  label: string;
+  placeholder: string;
+};
+
 type Prototype = {
   id: string;
   name: string;
@@ -11,6 +17,7 @@ type Prototype = {
     title: string;
     subtitle: string;
     placeholder: string;
+    inputs: UIInputConfig[];
   }
 };
 
@@ -29,8 +36,14 @@ type ChatSession = {
 
 function App() {
   const [prototypes, setPrototypes] = useState<Prototype[]>([]);
-  const [selectedPrototype, setSelectedPrototype] = useState<string>('');
-  const [studentCode, setStudentCode] = useState<string>('');
+  const [selectedPrototypeId, setSelectedPrototypeId] = useState<string>('');
+
+  // inputValues stores the dynamic form inputs keyed by input id
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+
+  // The state machine for our 3 pages
+  const [view, setView] = useState<'landing' | 'splash' | 'chat'>('landing');
+
   const [session, setSession] = useState<ChatSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,35 +60,62 @@ function App() {
         const urlPrototype = params.get('prototype');
 
         if (urlPrototype && data.find((p: Prototype) => p.id === urlPrototype)) {
-          setSelectedPrototype(urlPrototype);
+          setSelectedPrototypeId(urlPrototype);
+          setView('splash');
         } else if (data.length > 0) {
-          setSelectedPrototype(data[0].id);
+          setSelectedPrototypeId(data[0].id);
+          setView('landing');
         }
       })
       .catch(e => setError('Failed to load prototypes. Ensure backend is running.'));
   }, []);
 
-  const handleStart = async () => {
-    if (!studentCode.trim()) {
-      setError('Please enter a Student Code.');
-      return;
+  const handleOpenSplash = () => {
+    // Navigate via query param so the user has a shareable link
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.set('prototype', selectedPrototypeId);
+    window.history.pushState({}, '', newUrl);
+
+    setError('');
+    setView('splash');
+  };
+
+  const handleStartSession = async () => {
+    // Validation: make sure all required fields defined in YAML have some value
+    const prototype = prototypes.find(p => p.id === selectedPrototypeId);
+    if (!prototype) return;
+
+    for (const input of prototype.ui.inputs) {
+      if (!inputValues[input.id]?.trim()) {
+        setError(`Please enter a value for ${input.label}.`);
+        return;
+      }
     }
+
     setError('');
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/chat/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prototype_id: selectedPrototype, user_id: studentCode })
+        body: JSON.stringify({
+          prototype_id: selectedPrototypeId,
+          inputs: inputValues
+        })
       });
       if (!res.ok) throw new Error('Failed to start session');
       const data = await res.json();
       setSession(data);
+      setView('chat');
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateInputValue = (id: string, value: string) => {
+    setInputValues(prev => ({ ...prev, [id]: value }));
   };
 
   const handleSend = async () => {
@@ -112,9 +152,9 @@ function App() {
     }
   };
 
-  const activePrototypeUI = prototypes.find(p => p.id === session?.prototype_id)?.ui;
+  const activePrototypeUI = prototypes.find(p => p.id === selectedPrototypeId)?.ui;
 
-  if (!session) {
+  if (view === 'landing') {
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
@@ -122,14 +162,14 @@ function App() {
         </div>
         <main className="act-main">
           <section className="act-welcome-card">
-            <h1>Welcome</h1>
-            <p>Select a prototype and enter your Student Code to begin.</p>
+            <h1>Developer Landing Page</h1>
+            <p>Select a prototype to open its user-facing splash screen.</p>
 
             <div className="act-form-row">
               <label>Prototype</label>
               <select
-                value={selectedPrototype}
-                onChange={e => setSelectedPrototype(e.target.value)}
+                value={selectedPrototypeId}
+                onChange={e => setSelectedPrototypeId(e.target.value)}
               >
                 {prototypes.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
@@ -137,22 +177,48 @@ function App() {
               </select>
             </div>
 
-            <div className="act-form-row">
-              <label>Student Code</label>
-              <input
-                type="text"
-                placeholder="Enter your Student Code (e.g. student-123)"
-                value={studentCode}
-                onChange={e => setStudentCode(e.target.value)}
-              />
-            </div>
+            <button
+              className="act-primary-btn"
+              onClick={handleOpenSplash}
+              disabled={prototypes.length === 0}
+            >
+              Open
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (view === 'splash' && activePrototypeUI) {
+    return (
+      <div className="act-app-shell">
+        <div className="act-app-header">
+          <div className="act-brand">{activePrototypeUI.title}</div>
+        </div>
+        <main className="act-main">
+          <section className="act-welcome-card">
+            <h1>Welcome</h1>
+            <p>{activePrototypeUI.subtitle || 'Please fill out the information below to begin.'}</p>
+
+            {activePrototypeUI.inputs.map(input => (
+               <div key={input.id} className="act-form-row">
+                 <label>{input.label}</label>
+                 <input
+                   type="text"
+                   placeholder={input.placeholder || ''}
+                   value={inputValues[input.id] || ''}
+                   onChange={e => updateInputValue(input.id, e.target.value)}
+                 />
+               </div>
+            ))}
 
             {error && <div className="act-error-message">{error}</div>}
 
             <button
               className="act-primary-btn"
-              onClick={handleStart}
-              disabled={loading || prototypes.length === 0}
+              onClick={handleStartSession}
+              disabled={loading}
             >
               {loading ? 'Starting...' : 'Start'}
             </button>
@@ -161,6 +227,9 @@ function App() {
       </div>
     );
   }
+
+  // Chat View
+  if (!session) return null;
 
   return (
     <div className="act-app-shell">

@@ -13,3 +13,10 @@ ui:
   title: Contextual Tutor
   subtitle: Personalized Help
   placeholder: What do you want to learn today?
+  inputs:
+    - id: user_id
+      label: Student Code
+      placeholder: e.g., student-123
+    - id: lesson_code
+      label: Lesson Topic Code
+      placeholder: e.g., quadratics

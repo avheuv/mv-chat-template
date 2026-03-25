@@ -54,8 +54,11 @@ async def fetch_student_interests(inputs: Dict[str, str], session_id: str) -> st
             interests_list = ", ".join(doc.get("interests", []))
             summary = doc.get("summary", "")
             return f"STUDENT INTERESTS:\nInterests: {interests_list}\nSummary: {summary}"
+        # If the DB is connected but the user has no profile yet, return empty
+        # to ensure the AI doesn't hallucinate mock interests for a new user.
+        return "STUDENT INTERESTS:\nNo existing interests found. This is a new student."
 
-    # Fallback/Mock if Firestore is missing or student isn't found
+    # Fallback/Mock only if Firestore is completely disabled/missing
     return f"STUDENT INTERESTS:\nInterests: video games, soccer\nSummary: {user_id} likes playing sports and gaming."
 
 # Register them

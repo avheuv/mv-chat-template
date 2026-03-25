@@ -116,8 +116,48 @@ async def update_math_progress(session_id: str, user_id: str, prototype_id: str,
 registry.register("updateMathProgress", update_math_progress)
 ```
 
-## Deployment Principles
+## Deployment (Docker & Google Cloud)
 
-This project is structured for easy deployment to Google Cloud.
-1. **Frontend**: Build using `npm run build`. The `dist` folder can be uploaded directly to **Firebase Hosting**.
-2. **Backend**: Provide a `Dockerfile` wrapping the FastAPI app. Deploy to **Google Cloud Run**. The Cloud Run service will automatically pick up Application Default Credentials, so you don't need a service account key manually configured in production for Firestore access. Update the `API_BASE` in the React app to point to your Cloud Run URL.
+This project is structured for easy deployment to Google Cloud, utilizing **Firebase Hosting** for the frontend and **Google Cloud Run** for the backend.
+
+### 1. Backend (Cloud Run)
+The repository includes a standard `Dockerfile` for the backend.
+
+**Testing the Docker container locally:**
+```bash
+cd backend
+docker build -t ai-prototype-backend .
+docker run -p 8080:8080 -e OPENAI_API_KEY="sk-..." -e GOOGLE_APPLICATION_CREDENTIALS="/app/service-account.json" -v /path/to/your/service-account.json:/app/service-account.json ai-prototype-backend
+```
+
+**Deploying to Cloud Run:**
+Assuming you have the Google Cloud CLI installed and authenticated (`gcloud auth login` and `gcloud config set project YOUR_PROJECT_ID`):
+
+```bash
+cd backend
+gcloud run deploy ai-prototype-backend \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars="OPENAI_API_KEY=sk-your-key-here"
+```
+
+*Note: In production on Cloud Run, you do not need to mount a service account JSON file; Cloud Run automatically provides Application Default Credentials via its attached service account to access Firestore.*
+
+### 2. Frontend (Firebase Hosting)
+Once your backend is deployed, you will receive a Cloud Run URL (e.g., `https://ai-prototype-backend-xyz.a.run.app`).
+
+1. Open `frontend/.env.production` (or create it) and set:
+   ```env
+   VITE_API_BASE_URL=https://ai-prototype-backend-xyz.a.run.app
+   ```
+2. Build the production assets:
+   ```bash
+   cd frontend
+   npm run build
+   ```
+3. Deploy to Firebase:
+   ```bash
+   firebase init hosting  # If not done yet. Select 'dist' as the public directory.
+   firebase deploy --only hosting
+   ```

@@ -23,9 +23,9 @@ class ChatService:
             messages=[]
         )
 
-        # Load System Prompt Override from Firestore
-        override_prompt = await firestore_service.get_system_prompt_override(
-            request.prototype_id, prototype.systemPrompt
+        # Load Overrides from Firestore
+        overrides = await firestore_service.get_prototype_overrides(
+            request.prototype_id, prototype.systemPrompt, prototype.model
         )
 
         # Build Context String if needed
@@ -39,7 +39,8 @@ class ChatService:
                 print(f"Warning: Context builder '{source}' not found.")
 
         # Create the system prompt using the override
-        system_content = override_prompt
+        system_content = overrides["systemPrompt"]
+        model_to_use = overrides["model"]
         if context_parts:
             system_content += "\n\n--- BACKGROUND CONTEXT ---\n" + "\n\n".join(context_parts)
 
@@ -68,7 +69,7 @@ class ChatService:
             # Call LLM
             content, structured_data = await llm_service.generate_response(
                 messages=llm_messages,
-                model=prototype.model,
+                model=model_to_use,
                 temperature=prototype.temperature,
                 max_tokens=prototype.maxTokens,
                 output_schema=prototype.outputSpec
@@ -117,10 +118,16 @@ class ChatService:
         # We only send system, user, and assistant roles.
         llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
+        # Fetch model override dynamically (so it works even if we restart or clear cache)
+        # Note: system prompt is fixed during start_session, but model can be dynamic per turn
+        overrides = await firestore_service.get_prototype_overrides(
+            prototype.id, prototype.systemPrompt, prototype.model
+        )
+
         # Call LLM
         content, structured_data = await llm_service.generate_response(
             messages=llm_messages,
-            model=prototype.model,
+            model=overrides["model"],
             temperature=prototype.temperature,
             max_tokens=prototype.maxTokens,
             output_schema=prototype.outputSpec

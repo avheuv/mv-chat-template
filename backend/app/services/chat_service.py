@@ -46,16 +46,39 @@ class ChatService:
 
         session.messages.append(system_message)
 
-        # Add initial assistant greeting if you want, or just wait for user
-        greeting_message = Message(
-            id=str(uuid.uuid4()),
-            role="assistant",
-            content=prototype.ui.placeholder # Use placeholder or custom greeting
-        )
-        if greeting_message.content:
-            # For simplicity, if placeholder exists, we use it as a greeting if we want.
-            # But normally user initiates. Let's just keep the system message and wait for user.
-            pass
+        # If an initialMessagePrompt exists, let's trigger the LLM to write the first greeting.
+        if prototype.initialMessagePrompt:
+            # We temporarily append the prompt as a user message to trigger the greeting
+            # without confusing the AI's internal state logic.
+            trigger_message = Message(
+                id=str(uuid.uuid4()),
+                role="user",
+                content=prototype.initialMessagePrompt
+            )
+            session.messages.append(trigger_message)
+
+            # Prepare messages for LLM
+            llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
+
+            # Call LLM
+            content, structured_data = await llm_service.generate_response(
+                messages=llm_messages,
+                model=prototype.model,
+                temperature=prototype.temperature,
+                max_tokens=prototype.maxTokens,
+                output_schema=prototype.outputSpec
+            )
+
+            # Remove the hidden trigger prompt so the user never sees it in the chat history
+            session.messages.pop()
+
+            # Append the assistant's generated personalized greeting
+            assistant_greeting = Message(
+                id=str(uuid.uuid4()),
+                role="assistant",
+                content=content
+            )
+            session.messages.append(assistant_greeting)
 
         # Save session to Firestore
         await firestore_service.set_document("sessions", session_id, session.dict())

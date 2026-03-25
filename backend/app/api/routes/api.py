@@ -4,14 +4,13 @@ from typing import List
 from app.core.prototype_loader import prototype_loader, PrototypeConfig
 from app.models.chat import ChatStartRequest, ChatSession, ChatSendRequest, ChatResponse
 from app.services.chat_service import chat_service
+from app.services.firestore_service import firestore_service
 
 router = APIRouter()
 
 @router.get("/health")
 async def health_check():
     return {"status": "ok"}
-
-from app.services.firestore_service import firestore_service
 
 @router.get("/api/prototypes", response_model=List[PrototypeConfig])
 async def get_prototypes():
@@ -31,14 +30,15 @@ async def get_prototype(prototype_id: str):
         raise HTTPException(status_code=404, detail="Prototype not found")
 
     # Inject Firestore override before returning
-    override_prompt = await firestore_service.get_system_prompt_override(
-        prototype_id, prototype.systemPrompt
+    overrides = await firestore_service.get_prototype_overrides(
+        prototype_id, prototype.systemPrompt, prototype.model
     )
 
     # Create a deep copy to avoid mutating the cached loader state
     # This ensures that we always read from DB instead of returning a mutated memory object
     prototype_copy = prototype.model_copy()
-    prototype_copy.systemPrompt = override_prompt
+    prototype_copy.systemPrompt = overrides["systemPrompt"]
+    prototype_copy.model = overrides["model"]
 
     return prototype_copy
 

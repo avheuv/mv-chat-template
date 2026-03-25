@@ -11,16 +11,36 @@ router = APIRouter()
 async def health_check():
     return {"status": "ok"}
 
+from app.services.firestore_service import firestore_service
+
 @router.get("/api/prototypes", response_model=List[PrototypeConfig])
 async def get_prototypes():
-    return prototype_loader.get_all()
+    prototypes = prototype_loader.get_all()
+
+    # We load overrides on demand. Since fetching all overrides could be slow,
+    # we'll just return the base config here. The detailed overrides happen
+    # on the individual `get_prototype` and during `chat/start`.
+    # Alternatively, you could fire all `get_system_prompt_override` calls in parallel.
+    # To keep it performant, we only enforce the override deeply when a specific prototype is requested or chat starts.
+    return prototypes
 
 @router.get("/api/prototypes/{prototype_id}", response_model=PrototypeConfig)
 async def get_prototype(prototype_id: str):
     prototype = prototype_loader.get_prototype(prototype_id)
     if not prototype:
         raise HTTPException(status_code=404, detail="Prototype not found")
-    return prototype
+
+    # Inject Firestore override before returning
+    override_prompt = await firestore_service.get_system_prompt_override(
+        prototype_id, prototype.systemPrompt
+    )
+
+    # Create a deep copy to avoid mutating the cached loader state
+    # This ensures that we always read from DB instead of returning a mutated memory object
+    prototype_copy = prototype.model_copy()
+    prototype_copy.systemPrompt = override_prompt
+
+    return prototype_copy
 
 @router.post("/api/chat/start", response_model=ChatSession)
 async def start_chat(request: ChatStartRequest):

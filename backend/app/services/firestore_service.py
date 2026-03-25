@@ -25,6 +25,22 @@ class FirestoreService:
             return data
         return None
 
+    async def get_system_prompt_override(self, prototype_id: str, default_prompt: str) -> str:
+        if not self.db: return default_prompt
+        doc_ref = self.db.collection("prompts").document(prototype_id)
+        doc = await doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict()
+            if data and data.get("systemPrompt"):
+                return data.get("systemPrompt")
+
+        # If it doesn't exist, create it automatically with the default to guide the user
+        await self.set_document("prompts", prototype_id, {
+            "systemPrompt": default_prompt,
+            "_note": "Edit systemPrompt here to override the YAML config without redeploying."
+        })
+        return default_prompt
+
     async def set_document(self, collection: str, doc_id: str, data: Dict[str, Any]):
         if not self.db: return
         doc_ref = self.db.collection(collection).document(doc_id)

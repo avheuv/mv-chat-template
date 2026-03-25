@@ -23,6 +23,11 @@ class ChatService:
             messages=[]
         )
 
+        # Load System Prompt Override from Firestore
+        override_prompt = await firestore_service.get_system_prompt_override(
+            request.prototype_id, prototype.systemPrompt
+        )
+
         # Build Context String if needed
         context_parts = []
         for source in prototype.contextSources:
@@ -33,8 +38,8 @@ class ChatService:
             else:
                 print(f"Warning: Context builder '{source}' not found.")
 
-        # Create the system prompt
-        system_content = prototype.systemPrompt
+        # Create the system prompt using the override
+        system_content = override_prompt
         if context_parts:
             system_content += "\n\n--- BACKGROUND CONTEXT ---\n" + "\n\n".join(context_parts)
 

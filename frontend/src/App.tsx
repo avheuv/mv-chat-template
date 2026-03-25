@@ -10,7 +10,9 @@ const API_BASE = 'http://localhost:8000/api';
 type UIInputConfig = {
   id: string;
   label: string;
-  placeholder: string;
+  type: 'text' | 'select';
+  placeholder?: string;
+  options?: { label: string; value: string }[];
 };
 
 type Prototype = {
@@ -21,6 +23,7 @@ type Prototype = {
     title: string;
     subtitle: string;
     placeholder: string;
+    readonly: boolean;
     inputs: UIInputConfig[];
   }
 };
@@ -208,12 +211,24 @@ function App() {
             {activePrototypeUI.inputs.map(input => (
                <div key={input.id} className="act-form-row">
                  <label>{input.label}</label>
-                 <input
-                   type="text"
-                   placeholder={input.placeholder || ''}
-                   value={inputValues[input.id] || ''}
-                   onChange={e => updateInputValue(input.id, e.target.value)}
-                 />
+                 {input.type === 'select' && input.options ? (
+                   <select
+                     value={inputValues[input.id] || ''}
+                     onChange={e => updateInputValue(input.id, e.target.value)}
+                   >
+                     <option value="" disabled>Select {input.label}</option>
+                     {input.options.map(opt => (
+                       <option key={opt.value} value={opt.value}>{opt.label}</option>
+                     ))}
+                   </select>
+                 ) : (
+                   <input
+                     type="text"
+                     placeholder={input.placeholder || ''}
+                     value={inputValues[input.id] || ''}
+                     onChange={e => updateInputValue(input.id, e.target.value)}
+                   />
+                 )}
                </div>
             ))}
 
@@ -278,29 +293,31 @@ function App() {
           )}
         </div>
 
-        <div className="act-composer-wrap">
-          <div className="act-composer">
-            <textarea
-              placeholder={activePrototypeUI?.placeholder || 'Type your message...'}
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              rows={1}
-            />
-            <button
-              className="act-send-btn"
-              onClick={handleSend}
-              disabled={loading || !inputValue.trim()}
-            >
-              Send
-            </button>
+        {!activePrototypeUI?.readonly && (
+          <div className="act-composer-wrap">
+            <div className="act-composer">
+              <textarea
+                placeholder={activePrototypeUI?.placeholder || 'Type your message...'}
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                rows={1}
+              />
+              <button
+                className="act-send-btn"
+                onClick={handleSend}
+                disabled={loading || !inputValue.trim()}
+              >
+                Send
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );

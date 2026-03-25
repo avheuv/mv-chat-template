@@ -26,28 +26,38 @@ class LLMService:
         }
 
         if output_schema:
-            params["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "structured_output",
-                    "schema": output_schema,
-                    "strict": True
+            # We use tool calling instead of response_format so the AI can still
+            # talk conversationally while deciding when to trigger the save action.
+            params["tools"] = [{
+                "type": "function",
+                "function": {
+                    "name": "save_structured_data",
+                    "description": "Saves the extracted structured data. Call this when you have gathered all required information.",
+                    "parameters": output_schema
                 }
-            }
+            }]
+            # Optional: you could force it if you want, but auto is better for conversation
+            params["tool_choice"] = "auto"
 
         try:
             response = await client.chat.completions.create(**params)
-            content = response.choices[0].message.content
+            message = response.choices[0].message
+            content = message.content or ""
 
             structured_data = None
-            if output_schema:
-                try:
-                    structured_data = json.loads(content)
-                    # Often the model might wrap the intended content in the required format.
-                    # Or it just returns the JSON as text.
-                except json.JSONDecodeError:
-                    structured_data = {}
-                    print("Warning: Failed to parse expected JSON output.")
+
+            if message.tool_calls:
+                # If the AI decided to call the tool
+                for tool_call in message.tool_calls:
+                    if tool_call.function.name == "save_structured_data":
+                        try:
+                            structured_data = json.loads(tool_call.function.arguments)
+                        except json.JSONDecodeError:
+                            print("Warning: Failed to parse tool arguments.")
+
+            # If the model ONLY called a tool and returned no text, let's provide a generic confirmation
+            if not content and structured_data:
+                content = "I have successfully saved your information!"
 
             return content, structured_data
 

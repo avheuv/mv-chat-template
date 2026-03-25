@@ -11,13 +11,13 @@ class Message(BaseModel):
 class ChatSession(BaseModel):
     id: str
     prototype_id: str
-    user_id: str
+    inputs: Dict[str, str] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     messages: List[Message] = []
 
 class ChatStartRequest(BaseModel):
     prototype_id: str
-    user_id: str
+    inputs: Dict[str, str] = Field(default_factory=dict)
 
 class ChatSendRequest(BaseModel):
     session_id: str

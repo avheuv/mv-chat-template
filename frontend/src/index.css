@@ -270,7 +270,7 @@ body {
   margin-bottom: 0;
 }
 .markdown-content p {
-  margin: 0 0 8px; /* reduced space between normal paragraphs */
+  margin: 0 0 16px; /* increased space between normal paragraphs for readability */
 }
 .markdown-content p:last-child {
   margin-bottom: 0;

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 // API Base URL - hardcoded for dev, normally from env
 const API_BASE = 'http://localhost:8000/api';
@@ -233,6 +235,16 @@ function App() {
   // Chat View
   if (!session) return null;
 
+  // Helper to convert OpenAI's default LaTeX delimiters to standard Markdown ones for remark-math
+  const processMathDelimiters = (text: string) => {
+    if (!text) return text;
+    return text
+      .replace(/\\\[/g, '$$$$')
+      .replace(/\\\]/g, '$$$$')
+      .replace(/\\\(/g, '$')
+      .replace(/\\\)/g, '$');
+  };
+
   return (
     <div className="act-app-shell">
       <div className="act-app-header">
@@ -244,14 +256,15 @@ function App() {
             <div key={m.id} className={`act-message-row act-message-row-${m.role}`}>
               <div className={`act-bubble act-bubble-${m.role} markdown-content`}>
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
                   components={{
                     a: ({ node, ...props }) => (
                       <a {...props} target="_blank" rel="noopener noreferrer" />
                     )
                   }}
                 >
-                  {m.content}
+                  {processMathDelimiters(m.content)}
                 </ReactMarkdown>
               </div>
             </div>

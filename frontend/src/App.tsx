@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // API Base URL - hardcoded for dev, normally from env
 const API_BASE = 'http://localhost:8000/api';
@@ -240,8 +242,10 @@ function App() {
         <div className="act-chat-messages">
           {session.messages.filter(m => m.role !== 'system').map(m => (
             <div key={m.id} className={`act-message-row act-message-row-${m.role}`}>
-              <div className={`act-bubble act-bubble-${m.role}`}>
-                {m.content}
+              <div className={`act-bubble act-bubble-${m.role} markdown-content`}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {m.content}
+                </ReactMarkdown>
               </div>
             </div>
           ))}

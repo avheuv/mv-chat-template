@@ -4,8 +4,8 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
-// API Base URL - hardcoded for dev, normally from env
-const API_BASE = 'http://localhost:8000/api';
+// Use environment variable for production, fallback to local dev server
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 type UIInputConfig = {
   id: string;
@@ -74,7 +74,7 @@ function App() {
           setView('landing');
         }
       })
-      .catch(e => setError('Failed to load prototypes. Ensure backend is running.'));
+      .catch(() => setError('Failed to load prototypes. Ensure backend is running.'));
   }, []);
 
   const handleOpenSplash = () => {

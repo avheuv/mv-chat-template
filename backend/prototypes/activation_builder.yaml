@@ -12,7 +12,7 @@ temperature: 0.7
 maxTokens: 500
 contextSources:
   - fetchStudentInterests
-  - demoLessonData
+  - fetchLessonData
 ui:
   title: Lesson Activation
   subtitle: Generate a custom hook
@@ -26,10 +26,7 @@ ui:
     - id: lesson_code
       label: Lesson Topic
       type: select
-      options:
-        - label: Quadratic Equations
-          value: quadratics
-        - label: Cell Structure
-          value: biology
-        - label: General Math
-          value: default
+      dynamicOptions:
+        collection: lesson_topics
+        labelField: title
+        valueField: id

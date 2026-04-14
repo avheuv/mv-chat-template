@@ -61,7 +61,25 @@ async def fetch_student_interests(inputs: Dict[str, str], session_id: str) -> st
     # Fallback/Mock only if Firestore is completely disabled/missing
     return f"STUDENT INTERESTS:\nInterests: video games, soccer\nSummary: {user_id} likes playing sports and gaming."
 
+async def fetch_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
+    """
+    Fetches the lesson data from Firestore using the lesson_code.
+    """
+    from app.services.firestore_service import firestore_service
+    lesson_code = inputs.get("lesson_code", "default")
+
+    if firestore_service.db:
+        doc = await firestore_service.get_document("lesson_topics", lesson_code)
+        if doc:
+            title = doc.get("title", "Unknown Lesson")
+            objectives = doc.get("objectives", "No objectives provided.")
+            return f"LESSON DATA:\nTopic: {title}\nGoal: {objectives}"
+
+    # Fallback if Firestore is not available
+    return demo_lesson_data(inputs, session_id)
+
 # Register them
 registry.register("demoUserProfile", demo_user_profile)
 registry.register("demoLessonData", demo_lesson_data)
 registry.register("fetchStudentInterests", fetch_student_interests)
+registry.register("fetchLessonData", fetch_lesson_data)

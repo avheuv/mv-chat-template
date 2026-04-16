@@ -5,3 +5,5 @@ venv/
 .env
 .pytest_cache/
 *.log
+backend/mv-chats-2e865-firebase-adminsdk-fbsvc-64328f590b.json
+

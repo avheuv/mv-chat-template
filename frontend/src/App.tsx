@@ -320,7 +320,7 @@ function App() {
         <div className="act-brand">{activePrototypeUI?.title || 'Chat'}</div>
       </div>
       <main className="act-main relative">
-        <div className="act-chat-messages" style={{ paddingBottom: assessmentData ? '80px' : '0' }}>
+        <div className="act-chat-messages" style={{ paddingBottom: assessmentData ? '160px' : '80px' }}>
           {session.messages.filter(m => m.role !== 'system').map(m => (
             <div key={m.id} className={`act-message-row act-message-row-${m.role}`}>
               <div className={`act-bubble act-bubble-${m.role} markdown-content`}>
@@ -383,7 +383,7 @@ function App() {
                 borderRadius: '8px',
                 border: '1px solid var(--border)'
               }}>
-                <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>Score</span>
+                <span style={{ fontWeight: 'bold', color: '#1E3A8A' }}>Score</span>
                 <div style={{
                   flex: 1,
                   height: '10px',
@@ -394,14 +394,23 @@ function App() {
                   <div style={{
                     width: `${assessmentData.score}%`,
                     height: '100%',
-                    backgroundColor: 'var(--primary)',
+                    backgroundColor: '#1E3A8A',
                     transition: 'width 0.3s ease'
                   }}></div>
                 </div>
-                <span style={{ fontWeight: 'bold' }}>{assessmentData.score}</span>
+                <span style={{ fontWeight: 'bold', color: '#1E3A8A' }}>{assessmentData.score}</span>
                 <button
-                  className="act-primary-btn"
-                  style={{ padding: '6px 12px', fontSize: '14px', width: 'auto' }}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '14px',
+                    width: 'auto',
+                    backgroundColor: '#1E3A8A',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: savingScore ? 'not-allowed' : 'pointer',
+                    opacity: savingScore ? 0.7 : 1
+                  }}
                   onClick={handleSaveScore}
                   disabled={savingScore}
                 >

@@ -14,8 +14,8 @@ contextSources:
   - fetchStudentInterests
   - fetchLessonData
 ui:
-  title: Lesson Activation
-  subtitle: Generate a custom hook
+  title: Activation Builder
+  subtitle: Create a personalized lesson hook based on the student interests.
   placeholder: ""
   readonly: true
   inputs:

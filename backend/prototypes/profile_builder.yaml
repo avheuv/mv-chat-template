@@ -30,8 +30,8 @@ outputSpec:
   required: [interests, summary]
   additionalProperties: false
 ui:
-  title: Profile Interviewer
-  subtitle: Let's build your profile
+  title: Student Interest Profiler
+  subtitle: Create your own unique student code.
   placeholder: Tell me what you like...
   inputs:
     - id: user_id

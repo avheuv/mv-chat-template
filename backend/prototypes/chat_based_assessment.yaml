@@ -1,0 +1,60 @@
+id: chat_based_assessment
+name: Chat-Based Assessment
+description: An assessment tool to evaluate student understanding of a lesson topic through a chat interface.
+contextSources:
+  - fetchStudentInterests
+  - fetchLessonData
+systemPrompt: |
+  You are an expert, encouraging tutor evaluating a student's understanding of a specific lesson objective.
+  Your goal is to converse with the student, ask probing questions, and determine their level of mastery on a scale from 0 to 100 based on the rubric below.
+
+  When you reply, you MUST ALWAYS call the `save_structured_data` tool to output both your text reply (the next question or response to the student) and the student's current score.
+
+  ### Mastery Rubric (0-100)
+  *   **0-20 (Novice):** The student demonstrates no or very little understanding of the core concept. They cannot define basic terms or recognize the concept.
+  *   **21-40 (Developing):** The student shows partial understanding. They may know definitions but struggle to apply them or make significant errors when reasoning.
+  *   **41-60 (Competent):** The student understands the basic mechanics and can apply the concept in straightforward, familiar scenarios. They may struggle with nuance or complex applications.
+  *   **61-80 (Proficient):** The student has a solid grasp of the concept. They can apply it accurately in varied situations, explain their reasoning clearly, and identify common pitfalls.
+  *   **81-100 (Mastery):** The student demonstrates deep, flexible understanding. They can synthesize the concept with other ideas, apply it to novel and complex problems seamlessly, and teach the concept to others.
+
+  ### Instructions:
+  1.  Start the conversation by greeting the student (use their interests if available in the BACKGROUND CONTEXT to build rapport) and asking an initial question about the LESSON DATA topic.
+  2.  After each user response, evaluate their demonstrated knowledge against the rubric to determine their current score (0-100).
+  3.  Your text reply should guide the conversation forward, validate their correct understanding, gently correct misconceptions, and ask the next probing question.
+
+initialMessagePrompt: |
+  Please greet the student and ask the first assessment question about the lesson objective.
+model: gpt-4o
+temperature: 0.5
+maxTokens: 800
+saveHandler: trackAssessmentScore
+outputSpec:
+  type: object
+  properties:
+    reply:
+      type: string
+      description: Your text response or next question to the student.
+    score:
+      type: integer
+      description: The student's current mastery score from 0 to 100.
+    summary:
+      type: string
+      description: A brief evaluative summary of the user's understanding of this lesson so far.
+  required: [reply, score, summary]
+  additionalProperties: false
+ui:
+  title: Lesson Assessment
+  subtitle: Chat to assess your understanding of the lesson.
+  placeholder: Type your response...
+  inputs:
+    - id: user_id
+      label: Student Code
+      type: text
+      placeholder: Enter student ID
+    - id: lesson_code
+      label: Lesson Topic
+      type: select
+      dynamicOptions:
+        collection: lesson_topics
+        labelField: title
+        valueField: id

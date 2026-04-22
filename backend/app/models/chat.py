@@ -26,3 +26,9 @@ class ChatSendRequest(BaseModel):
 class ChatResponse(BaseModel):
     message: Message
     structured_data: Optional[Dict[str, Any]] = None
+
+class SaveScoreRequest(BaseModel):
+    user_id: str
+    lesson_topic: str
+    score: int
+    summary: str

@@ -78,6 +78,9 @@ class ChatService:
             # Remove the hidden trigger prompt so the user never sees it in the chat history
             session.messages.pop()
 
+            if not content and structured_data and "reply" in structured_data:
+                content = structured_data["reply"]
+
             # Append the assistant's generated personalized greeting
             assistant_greeting = Message(
                 id=str(uuid.uuid4()),
@@ -132,6 +135,11 @@ class ChatService:
             max_tokens=prototype.maxTokens,
             output_schema=prototype.outputSpec
         )
+
+        # If the output schema requires 'reply', LLM service might not populate content
+        # Check if structured_data has a 'reply' string to use as the actual message content
+        if not content and structured_data and "reply" in structured_data:
+            content = structured_data["reply"]
 
         # Append assistant message
         assistant_message = Message(

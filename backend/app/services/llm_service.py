@@ -63,9 +63,13 @@ class LLMService:
                         except json.JSONDecodeError:
                             print("Warning: Failed to parse tool arguments.")
 
-            # If the model ONLY called a tool and returned no text, let's provide a generic confirmation
+            # If the model ONLY called a tool and returned no text, don't override it with a generic
+            # message if the tool itself contains a 'reply' string.
             if not content and structured_data:
-                content = "I have successfully saved your information!"
+                if "reply" in structured_data:
+                    content = "" # Let chat_service pick up the reply
+                else:
+                    content = "I have successfully saved your information!"
 
             return content, structured_data
 

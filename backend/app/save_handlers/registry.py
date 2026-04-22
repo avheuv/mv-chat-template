@@ -70,3 +70,16 @@ async def update_user_profile(session_id: str, user_id: str, prototype_id: str, 
 # Register them
 registry.register("defaultArtifactSave", default_artifact_save)
 registry.register("updateUserProfile", update_user_profile)
+
+async def track_assessment_score(session_id: str, user_id: str, prototype_id: str, data: Dict[str, Any]):
+    """
+    A save handler that just lets the chat service receive the score so it can be passed
+    to the frontend without permanently saving it to the database on every turn.
+    We don't need to save to DB here because the user clicks "Save Score" manually.
+    """
+    # The score is returned in `structured_data` back to `chat_service.py`
+    # which returns it in `ChatResponse` to the frontend.
+    print(f"Ongoing assessment score updated for session {session_id}: {data.get('score')}")
+    pass
+
+registry.register("trackAssessmentScore", track_assessment_score)

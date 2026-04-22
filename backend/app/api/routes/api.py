@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 
 from app.core.prototype_loader import prototype_loader, PrototypeConfig
-from app.models.chat import ChatStartRequest, ChatSession, ChatSendRequest, ChatResponse
+import uuid
+from app.models.chat import ChatStartRequest, ChatSession, ChatSendRequest, ChatResponse, SaveScoreRequest
 from app.services.chat_service import chat_service
 from app.services.firestore_service import firestore_service
 
@@ -41,6 +42,14 @@ async def _populate_dynamic_options(prototype: PrototypeConfig) -> PrototypeConf
                 label = doc.get(input_config.dynamicOptions.labelField, "Unknown")
                 val = doc.get(input_config.dynamicOptions.valueField, doc.get("id"))
                 options.append({"label": str(label), "value": str(val)})
+
+            # If Firestore is disabled, provide some mock options so UI doesn't break
+            if not firestore_service.db and not options and input_config.dynamicOptions.collection == "lesson_topics":
+                options = [
+                    {"label": "Quadratic Equations", "value": "quadratics"},
+                    {"label": "Cell Structure", "value": "biology"},
+                    {"label": "General Math", "value": "default"}
+                ]
 
             # Update the input options
             prototype_copy.ui.inputs[i].options = options
@@ -102,3 +111,27 @@ async def get_session(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
+
+@router.post("/api/chat/save-score")
+async def save_score(request: SaveScoreRequest):
+    try:
+        if not firestore_service.db:
+            return {"status": "mock_saved", "message": "Firestore disabled, score logged."}
+
+        from google.cloud import firestore
+        assessment_id = str(uuid.uuid4())
+        payload = {
+            "lesson_topic": request.lesson_topic,
+            "score": request.score,
+            "summary": request.summary,
+            "created_at": firestore.SERVER_TIMESTAMP
+        }
+
+        await firestore_service.set_document(
+            f"users/{request.user_id}/assessments",
+            assessment_id,
+            payload
+        )
+        return {"status": "success", "assessment_id": assessment_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save score: {str(e)}")

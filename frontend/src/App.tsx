@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -41,6 +41,11 @@ type ChatSession = {
   messages: Message[];
 };
 
+type AssessmentData = {
+  score: number;
+  summary: string;
+};
+
 function App() {
   const [prototypes, setPrototypes] = useState<Prototype[]>([]);
   const [selectedPrototypeId, setSelectedPrototypeId] = useState<string>('');
@@ -55,6 +60,23 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [inputValue, setInputValue] = useState('');
+
+  // Ref for auto-scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // State for the assessment prototype specific UI
+  const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
+  const [savingScore, setSavingScore] = useState(false);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (view === 'chat') {
+      scrollToBottom();
+    }
+  }, [session?.messages, loading, view]);
 
   useEffect(() => {
     fetch(`${API_BASE}/prototypes`)
@@ -147,11 +169,19 @@ function App() {
       });
       if (!res.ok) throw new Error('Failed to send message');
 
+      const chatResponse = await res.json();
+
+      // If this is the assessment prototype, the backend will return the score in structured_data
+      if (chatResponse.structured_data && chatResponse.structured_data.score !== undefined) {
+         setAssessmentData({
+           score: chatResponse.structured_data.score,
+           summary: chatResponse.structured_data.summary || ''
+         });
+      }
+
       const sessionRes = await fetch(`${API_BASE}/chat/session/${session.id}`);
       const sessionData = await sessionRes.json();
       setSession(sessionData);
-
-      // Auto-scroll logic could go here
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -159,7 +189,31 @@ function App() {
     }
   };
 
-  const activePrototypeUI = prototypes.find(p => p.id === selectedPrototypeId)?.ui;
+  const activePrototype = prototypes.find(p => p.id === selectedPrototypeId);
+  const activePrototypeUI = activePrototype?.ui;
+
+  const handleSaveScore = async () => {
+    if (!session || !assessmentData || savingScore) return;
+    setSavingScore(true);
+    try {
+      const res = await fetch(`${API_BASE}/chat/save-score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: inputValues['user_id'] || 'unknown',
+          lesson_topic: inputValues['lesson_code'] || 'unknown',
+          score: assessmentData.score,
+          summary: assessmentData.summary
+        })
+      });
+      if (!res.ok) throw new Error('Failed to save score');
+      alert('Score saved successfully!');
+    } catch (e: any) {
+      alert(`Error saving score: ${e.message}`);
+    } finally {
+      setSavingScore(false);
+    }
+  };
 
   if (view === 'landing') {
     return (
@@ -266,7 +320,7 @@ function App() {
         <div className="act-brand">{activePrototypeUI?.title || 'Chat'}</div>
       </div>
       <main className="act-main relative">
-        <div className="act-chat-messages">
+        <div className="act-chat-messages" style={{ paddingBottom: assessmentData ? '80px' : '0' }}>
           {session.messages.filter(m => m.role !== 'system').map(m => (
             <div key={m.id} className={`act-message-row act-message-row-${m.role}`}>
               <div className={`act-bubble act-bubble-${m.role} markdown-content`}>
@@ -291,6 +345,7 @@ function App() {
              </div>
            </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {!activePrototypeUI?.readonly && (
@@ -316,6 +371,44 @@ function App() {
                 Send
               </button>
             </div>
+            {assessmentData && (
+              <div className="act-score-bar-container" style={{
+                marginTop: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                width: '100%',
+                backgroundColor: 'var(--surface)',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)'
+              }}>
+                <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>Score</span>
+                <div style={{
+                  flex: 1,
+                  height: '10px',
+                  backgroundColor: 'var(--bg-main)',
+                  borderRadius: '5px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: `${assessmentData.score}%`,
+                    height: '100%',
+                    backgroundColor: 'var(--primary)',
+                    transition: 'width 0.3s ease'
+                  }}></div>
+                </div>
+                <span style={{ fontWeight: 'bold' }}>{assessmentData.score}</span>
+                <button
+                  className="act-primary-btn"
+                  style={{ padding: '6px 12px', fontSize: '14px', width: 'auto' }}
+                  onClick={handleSaveScore}
+                  disabled={savingScore}
+                >
+                  {savingScore ? 'Saving...' : 'Save Score'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>

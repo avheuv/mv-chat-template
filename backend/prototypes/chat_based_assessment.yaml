@@ -20,7 +20,8 @@ systemPrompt: |
   ### Instructions:
   1.  Start the conversation by greeting the student (use their interests if available in the BACKGROUND CONTEXT to build rapport) and asking an initial question about the LESSON DATA topic.
   2.  After each user response, evaluate their demonstrated knowledge against the rubric to determine their current score (0-100).
-  3.  Your text reply should guide the conversation forward, validate their correct understanding, gently correct misconceptions, and ask the next probing question.
+  3.  Act like a Socratic teacher: your text reply should be brief, focused on probing the student's understanding through Socratic questioning. Do not directly answer questions. Redirect and encourage the student to articulate what they know. Keep probing their understanding of the lesson objective rather than getting into arbitrary depth.
+  4.  Provide a short "tip" (20 words or less) giving guidance on how the student can continue to improve their understanding score based on their current understanding of the learning outcome. Do not specify exactly what they need to say.
 
 initialMessagePrompt: |
   Please greet the student and ask the first assessment question about the lesson objective.
@@ -40,7 +41,10 @@ outputSpec:
     summary:
       type: string
       description: A brief evaluative summary of the user's understanding of this lesson so far.
-  required: [reply, score, summary]
+    tip:
+      type: string
+      description: An instructional nudge (20 words or less) guiding the student on how to improve their score.
+  required: [reply, score, summary, tip]
   additionalProperties: false
 ui:
   title: Lesson Assessment

@@ -70,6 +70,9 @@ function App() {
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
   const [savingScore, setSavingScore] = useState(false);
 
+  const composerWrapRef = useRef<HTMLDivElement>(null);
+  const [composerHeight, setComposerHeight] = useState(120);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -79,6 +82,21 @@ function App() {
       scrollToBottom();
     }
   }, [session?.messages, loading, view]);
+
+  useEffect(() => {
+    if (view === 'chat' && composerWrapRef.current) {
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          if (entry.target === composerWrapRef.current) {
+             setComposerHeight(entry.contentRect.height);
+             scrollToBottom(); // Re-scroll if height changes to maintain visibility
+          }
+        }
+      });
+      resizeObserver.observe(composerWrapRef.current);
+      return () => resizeObserver.disconnect();
+    }
+  }, [view, assessmentData]); // Dependency on assessmentData to ensure ref is checked when UI changes
 
   useEffect(() => {
     fetch(`${API_BASE}/prototypes`)
@@ -336,7 +354,7 @@ function App() {
         <div className="act-brand">{activePrototypeUI?.title || 'Chat'}</div>
       </div>
       <main className="act-main relative">
-        <div className="act-chat-messages" style={{ paddingBottom: assessmentData ? '160px' : '80px' }}>
+        <div className="act-chat-messages" style={{ paddingBottom: `${composerHeight + 20}px` }}>
           {session.messages.filter(m => m.role !== 'system').map(m => (
             <div key={m.id} className={`act-message-row act-message-row-${m.role}`}>
               <div className={`act-bubble act-bubble-${m.role} markdown-content`}>
@@ -365,7 +383,7 @@ function App() {
         </div>
 
         {!activePrototypeUI?.readonly && (
-          <div className="act-composer-wrap">
+          <div className="act-composer-wrap" ref={composerWrapRef}>
             <div className="act-composer">
               <textarea
                 placeholder={activePrototypeUI?.placeholder || 'Type your message...'}

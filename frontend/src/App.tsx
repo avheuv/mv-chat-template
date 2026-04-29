@@ -43,7 +43,9 @@ type ChatSession = {
 
 type AssessmentData = {
   score: number;
+  engagement_score: number;
   summary: string;
+  tip?: string;
 };
 
 function App() {
@@ -173,9 +175,22 @@ function App() {
 
       // If this is the assessment prototype, the backend will return the score in structured_data
       if (chatResponse.structured_data && chatResponse.structured_data.score !== undefined) {
+         // Calculate engagement score based on user messages word count
+         const userMessages = session.messages.filter(m => m.role === 'user');
+         const newUserMessages = [...userMessages, { id: tempId, role: 'user', content: userContent }];
+         let totalWords = 0;
+         for (const msg of newUserMessages) {
+            // Very simple word count
+            const words = msg.content.trim().split(/\s+/).filter(w => w.length > 0);
+            totalWords += words.length;
+         }
+         const engagementScore = Math.min(100, totalWords);
+
          setAssessmentData({
            score: chatResponse.structured_data.score,
-           summary: chatResponse.structured_data.summary || ''
+           engagement_score: engagementScore,
+           summary: chatResponse.structured_data.summary || '',
+           tip: chatResponse.structured_data.tip
          });
       }
 
@@ -203,6 +218,7 @@ function App() {
           user_id: inputValues['user_id'] || 'unknown',
           lesson_topic: inputValues['lesson_code'] || 'unknown',
           score: assessmentData.score,
+          engagement_score: assessmentData.engagement_score,
           summary: assessmentData.summary
         })
       });
@@ -375,7 +391,7 @@ function App() {
               <div className="act-score-bar-container" style={{
                 marginTop: '12px',
                 display: 'flex',
-                alignItems: 'center',
+                flexDirection: 'column',
                 gap: '12px',
                 width: '100%',
                 backgroundColor: 'var(--surface)',
@@ -383,39 +399,76 @@ function App() {
                 borderRadius: '8px',
                 border: '1px solid var(--border)'
               }}>
-                <span style={{ fontWeight: 'bold', color: '#1E3A8A' }}>Score</span>
-                <div style={{
-                  flex: 1,
-                  height: '10px',
-                  backgroundColor: 'var(--bg-main)',
-                  borderRadius: '5px',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{
-                    width: `${assessmentData.score}%`,
-                    height: '100%',
-                    backgroundColor: '#1E3A8A',
-                    transition: 'width 0.3s ease'
-                  }}></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 'bold', color: '#333' }}>Score</span>
+                  <button
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '14px',
+                      width: 'auto',
+                      backgroundColor: '#1E3A8A',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: savingScore ? 'not-allowed' : 'pointer',
+                      opacity: savingScore ? 0.7 : 1
+                    }}
+                    onClick={handleSaveScore}
+                    disabled={savingScore}
+                  >
+                    {savingScore ? 'Saving...' : 'Save Score'}
+                  </button>
                 </div>
-                <span style={{ fontWeight: 'bold', color: '#1E3A8A' }}>{assessmentData.score}</span>
-                <button
-                  style={{
-                    padding: '6px 12px',
-                    fontSize: '14px',
-                    width: 'auto',
-                    backgroundColor: '#1E3A8A',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: savingScore ? 'not-allowed' : 'pointer',
-                    opacity: savingScore ? 0.7 : 1
-                  }}
-                  onClick={handleSaveScore}
-                  disabled={savingScore}
-                >
-                  {savingScore ? 'Saving...' : 'Save Score'}
-                </button>
+
+                {/* Engagement Score Bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ width: '100px', fontSize: '14px', color: '#666' }}>Engagement</span>
+                  <div style={{
+                    flex: 1,
+                    height: '10px',
+                    backgroundColor: 'var(--bg-main)',
+                    borderRadius: '5px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      width: `${assessmentData.engagement_score}%`,
+                      height: '100%',
+                      backgroundColor: '#DC2626', // Red
+                      transition: 'width 0.3s ease'
+                    }}></div>
+                  </div>
+                  <span style={{ width: '45px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold', color: '#DC2626' }}>
+                    {assessmentData.engagement_score}/100
+                  </span>
+                </div>
+
+                {/* Understanding Score Bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ width: '100px', fontSize: '14px', color: '#666' }}>Understanding</span>
+                  <div style={{
+                    flex: 1,
+                    height: '10px',
+                    backgroundColor: 'var(--bg-main)',
+                    borderRadius: '5px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      width: `${assessmentData.score}%`,
+                      height: '100%',
+                      backgroundColor: '#1E3A8A', // Blue
+                      transition: 'width 0.3s ease'
+                    }}></div>
+                  </div>
+                  <span style={{ width: '45px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold', color: '#1E3A8A' }}>
+                    {assessmentData.score}/100
+                  </span>
+                </div>
+
+                {assessmentData.tip && (
+                  <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+                    <span style={{ fontWeight: 'bold' }}>Tip:</span> {assessmentData.tip}
+                  </div>
+                )}
               </div>
             )}
           </div>

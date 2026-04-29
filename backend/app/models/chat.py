@@ -31,4 +31,5 @@ class SaveScoreRequest(BaseModel):
     user_id: str
     lesson_topic: str
     score: int
+    engagement_score: int
     summary: str

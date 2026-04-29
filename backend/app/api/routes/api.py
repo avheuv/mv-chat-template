@@ -123,6 +123,7 @@ async def save_score(request: SaveScoreRequest):
         payload = {
             "lesson_topic": request.lesson_topic,
             "score": request.score,
+            "engagement_score": request.engagement_score,
             "summary": request.summary,
             "created_at": firestore.SERVER_TIMESTAMP
         }

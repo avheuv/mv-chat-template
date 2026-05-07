@@ -66,9 +66,6 @@ async def fetch_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
     Fetches the lesson data from Firestore using the lesson_code.
     """
     from app.services.firestore_service import firestore_service
-    from app.services.llm_service import llm_service
-    import json
-
     lesson_code = inputs.get("lesson_code", "default")
 
     if firestore_service.db:
@@ -76,67 +73,10 @@ async def fetch_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
         if doc:
             title = doc.get("title", "Unknown Lesson")
             objectives = doc.get("objectives", "No objectives provided.")
-
-            concept_targets = doc.get("concept_targets", [])
-
-            # If concept_targets are missing or less than 3, generate them
-            if len(concept_targets) < 3:
-                system_prompt = (
-                    "You are an expert curriculum designer. Given the following lesson title and objectives, "
-                    "generate exactly 3 distinct concept targets. Each concept target should represent one specific piece of "
-                    "understanding that supports the larger learning objective.\n\n"
-                    f"Title: {title}\n"
-                    f"Objectives: {objectives}"
-                )
-
-                output_schema = {
-                    "type": "object",
-                    "properties": {
-                        "concept_targets": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "concept_id": {"type": "string"},
-                                    "description": {"type": "string"}
-                                },
-                                "required": ["concept_id", "description"],
-                                "additionalProperties": False
-                            },
-                            "minItems": 3,
-                            "maxItems": 3
-                        }
-                    },
-                    "required": ["concept_targets"],
-                    "additionalProperties": False
-                }
-
-                _, structured_data = await llm_service.generate_response(
-                    messages=[{"role": "system", "content": system_prompt}],
-                    model="gpt-4o",
-                    output_schema=output_schema
-                )
-
-                if structured_data and "concept_targets" in structured_data:
-                    # Enforce standardized IDs for newly generated targets
-                    concept_targets = []
-                    for i, target in enumerate(structured_data["concept_targets"][:3]):
-                        concept_targets.append({
-                            "concept_id": f"C{i+1}",
-                            "description": target.get("description", "")
-                        })
-
-                    # Save back to Firestore
-                    doc["concept_targets"] = concept_targets
-                    await firestore_service.set_document("lesson_topics", lesson_code, doc)
-
-            # Format targets for the prompt context
-            targets_str = "\n".join([f"- {t.get('concept_id')}: {t.get('description')}" for t in concept_targets])
-
-            return f"LESSON DATA:\nTopic: {title}\nGoal: {objectives}\nConcept Targets:\n{targets_str}"
+            return f"LESSON DATA:\nTopic: {title}\nGoal: {objectives}"
 
     # Fallback if Firestore is not available
-    return await demo_lesson_data(inputs, session_id)
+    return demo_lesson_data(inputs, session_id)
 
 # Register them
 registry.register("demoUserProfile", demo_user_profile)

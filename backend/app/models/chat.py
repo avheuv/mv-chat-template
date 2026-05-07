@@ -14,7 +14,6 @@ class ChatSession(BaseModel):
     inputs: Dict[str, str] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     messages: List[Message] = []
-    assessment_state: Optional[Dict[str, Any]] = None
 
 class ChatStartRequest(BaseModel):
     prototype_id: str

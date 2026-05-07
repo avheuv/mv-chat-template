@@ -1,5 +1,4 @@
 import uuid
-import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -9,33 +8,6 @@ from app.services.llm_service import llm_service
 from app.services.firestore_service import firestore_service
 from app.context_builders.registry import registry as context_registry
 from app.save_handlers.registry import registry as save_registry
-
-def normalize_question(text: str) -> str:
-    text = text.lower().strip()
-    for char in ["?", ".", ",", "!", ":", ";"]:
-        text = text.replace(char, "")
-    return text
-
-def is_repeated_question(new_question: str, previous_questions: List[str]) -> bool:
-    normalized_new = normalize_question(new_question)
-    new_words = set(normalized_new.split())
-
-    for old_question in previous_questions:
-        normalized_old = normalize_question(old_question)
-        old_words = set(normalized_old.split())
-
-        if normalized_new == normalized_old:
-            return True
-
-        if not new_words or not old_words:
-            continue
-
-        overlap = len(new_words & old_words) / len(new_words | old_words)
-
-        if overlap > 0.65:
-            return True
-
-    return False
 
 class ChatService:
     async def start_session(self, request: ChatStartRequest) -> ChatSession:
@@ -50,28 +22,6 @@ class ChatService:
             inputs=request.inputs,
             messages=[]
         )
-
-        # Initialize Assessment State if this is the chat_based_assessment prototype
-        if request.prototype_id == "chat_based_assessment":
-            lesson_code = request.inputs.get("lesson_code", "default")
-            doc = await firestore_service.get_document("lesson_topics", lesson_code) if firestore_service.db else None
-
-            title = doc.get("title", "Unknown Lesson") if doc else "Unknown Lesson"
-            objectives = doc.get("objectives", "No objectives provided.") if doc else "No objectives provided."
-            concept_targets = doc.get("concept_targets", []) if doc else []
-
-            session.assessment_state = {
-                "session_id": session_id,
-                "student_name": request.inputs.get("user_id", "Unknown"),
-                "lesson_topic": title,
-                "objectives": objectives,
-                "concept_targets": concept_targets,
-                "question_history": [],
-                "concept_scores": [
-                    {"concept_id": t.get("concept_id"), "score": 0, "evidence": ""} for t in concept_targets
-                ],
-                "current_score": 40
-            }
 
         # Load Overrides from Firestore
         overrides = await firestore_service.get_prototype_overrides(
@@ -171,98 +121,25 @@ class ChatService:
         # We only send system, user, and assistant roles.
         llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
-        # Inject assessment state into the last user message if applicable
-        if prototype.id == "chat_based_assessment" and session.assessment_state:
-            state_json = json.dumps(session.assessment_state, indent=2)
-            llm_messages[-1]["content"] += f"\n\n--- CURRENT ASSESSMENT STATE ---\n{state_json}"
-            print(f"DEBUG: Injecting assessment state for session {session.id}:\n{state_json}")
-
-        # Fetch model override dynamically
+        # Fetch model override dynamically (so it works even if we restart or clear cache)
+        # Note: system prompt is fixed during start_session, but model can be dynamic per turn
         overrides = await firestore_service.get_prototype_overrides(
             prototype.id, prototype.systemPrompt, prototype.model
         )
 
-        content = None
-        structured_data = None
+        # Call LLM
+        content, structured_data = await llm_service.generate_response(
+            messages=llm_messages,
+            model=overrides["model"],
+            temperature=prototype.temperature,
+            max_tokens=prototype.maxTokens,
+            output_schema=prototype.outputSpec
+        )
 
-        if prototype.id == "chat_based_assessment":
-            max_retries = 3
-            retry_count = 0
-
-            while retry_count < max_retries:
-                content, structured_data = await llm_service.generate_response(
-                    messages=llm_messages,
-                    model=overrides["model"],
-                    temperature=prototype.temperature,
-                    max_tokens=prototype.maxTokens,
-                    output_schema=prototype.outputSpec
-                )
-
-                if structured_data and "next_question" in structured_data:
-                    next_question = structured_data["next_question"]
-                    previous_questions = [q["question_text"] for q in session.assessment_state.get("question_history", [])]
-
-                    if is_repeated_question(next_question, previous_questions):
-                        print(f"DEBUG: Rejected repeated question: {next_question}")
-                        llm_messages.append({"role": "system", "content": "The previous question was too similar to one already asked. Please ask a different question targeting a concept that still needs evidence."})
-                        retry_count += 1
-                        continue
-                    else:
-                        break # Valid question
-                else:
-                    print("DEBUG: Missing 'next_question' in structured output, retrying...")
-                    llm_messages.append({"role": "system", "content": "Your structured output was missing 'next_question'. Please provide a valid structured response."})
-                    retry_count += 1
-
-            if retry_count == max_retries:
-                raise ValueError("Failed to generate a valid, non-repeated question after multiple attempts.")
-
-            # Calculate overall score and update state
-            if structured_data and "updated_concept_scores" in structured_data:
-                scores = structured_data["updated_concept_scores"]
-
-                # Validation of scores
-                for s in scores:
-                    if s["score"] not in [0, 1, 2]:
-                        s["score"] = max(0, min(2, s["score"])) # Clamp
-
-                session.assessment_state["concept_scores"] = scores
-
-                total_points = sum(s["score"] for s in scores)
-                max_points = 6
-                current_score = round(40 + (total_points / max_points) * 60)
-                session.assessment_state["current_score"] = current_score
-
-                # Update the previous question with the student's reply
-                if session.assessment_state["question_history"]:
-                    session.assessment_state["question_history"][-1]["student_reply"] = request.content
-
-                # Append the new question to the history
-                target_id = structured_data.get("next_question_target", "Unknown")
-                session.assessment_state["question_history"].append({
-                    "question_id": f"q{len(session.assessment_state['question_history']) + 1}",
-                    "question_text": structured_data["next_question"],
-                    "student_reply": "",
-                    "concept_target": target_id
-                })
-
-                # Map fields so frontend continues to work
-                content = structured_data["next_question"]
-                structured_data["reply"] = structured_data["next_question"]
-                structured_data["score"] = current_score
-
-        else:
-            # Standard flow for other prototypes
-            content, structured_data = await llm_service.generate_response(
-                messages=llm_messages,
-                model=overrides["model"],
-                temperature=prototype.temperature,
-                max_tokens=prototype.maxTokens,
-                output_schema=prototype.outputSpec
-            )
-
-            if not content and structured_data and "reply" in structured_data:
-                content = structured_data["reply"]
+        # If the output schema requires 'reply', LLM service might not populate content
+        # Check if structured_data has a 'reply' string to use as the actual message content
+        if not content and structured_data and "reply" in structured_data:
+            content = structured_data["reply"]
 
         # Append assistant message
         assistant_message = Message(

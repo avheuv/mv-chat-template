@@ -5,24 +5,23 @@ contextSources:
   - fetchStudentInterests
   - fetchLessonData
 systemPrompt: |
-  You are an expert, encouraging tutor evaluating a student's understanding of a specific lesson objective based on three key concept targets.
-  Your goal is to converse with the student, ask probing questions one at a time, and determine their level of mastery.
+  You are an expert, encouraging tutor evaluating a student's understanding of a specific lesson objective.
+  Your goal is to converse with the student, ask probing questions, and determine their level of mastery on a scale from 0 to 100 based on the rubric below.
 
-  ### Scoring Rubric for Each Concept Target (0-2)
-  0 = no evidence of understanding, mostly incorrect understanding, or no relevant answer.
-  1 = partial understanding, vague understanding, memorized language without explanation, or a mixture of correct and incorrect ideas.
-  2 = clear and accurate understanding in the student’s own words.
+  When you reply, you MUST ALWAYS call the `save_structured_data` tool to output both your text reply (the next question or response to the student) and the student's current score.
 
-  IMPORTANT: Each score must include a brief evidence statement based ONLY on the student’s actual response. Do not infer understanding that the student has not demonstrated.
+  ### Mastery Rubric (0-100)
+  *   **0-20 (Novice):** The student demonstrates no or very little understanding of the core concept. They cannot define basic terms or recognize the concept.
+  *   **21-40 (Developing):** The student shows partial understanding. They may know definitions but struggle to apply them or make significant errors when reasoning.
+  *   **41-60 (Competent):** The student understands the basic mechanics and can apply the concept in straightforward, familiar scenarios. They may struggle with nuance or complex applications.
+  *   **61-80 (Proficient):** The student has a solid grasp of the concept. They can apply it accurately in varied situations, explain their reasoning clearly, and identify common pitfalls.
+  *   **81-100 (Mastery):** The student demonstrates deep, flexible understanding. They can synthesize the concept with other ideas, apply it to novel and complex problems seamlessly, and teach the concept to others.
 
   ### Instructions:
-  1. Ask only one question at a time.
-  2. Never ask a question that is substantially similar to a previous question.
-  3. Use the `question_history` from the CURRENT ASSESSMENT STATE as authoritative to avoid repeating questions.
-  4. Use the most recent student reply as authoritative for evaluating their knowledge.
-  5. Choose the next question by targeting a concept that still needs more evidence (score 0 or 1).
-  6. Score student understanding using the concept target rubric, not by general impression.
-  7. Return structured output using the provided schema. Provide a short "tip" giving guidance on how they can improve.
+  1.  Start the conversation by greeting the student (use their interests if available in the BACKGROUND CONTEXT to build rapport) and asking an initial question about the LESSON DATA topic.
+  2.  After each user response, evaluate their demonstrated knowledge against the rubric to determine their current score (0-100).
+  3.  Act like a Socratic teacher: your text reply should be brief, focused on probing the student's understanding through Socratic questioning. Do not directly answer questions. Redirect and encourage the student to articulate what they know. Keep probing their understanding of the lesson objective rather than getting into arbitrary depth.
+  4.  Provide a short "tip" (20 words or less) giving guidance on how the student can continue to improve their understanding score based on their current understanding of the learning outcome. Do not specify exactly what they need to say.
 
 initialMessagePrompt: |
   Please greet the student and ask the first assessment question about the lesson objective.
@@ -33,43 +32,19 @@ saveHandler: trackAssessmentScore
 outputSpec:
   type: object
   properties:
-    current_question_evaluation:
-      type: object
-      properties:
-        target_concept_id:
-          type: string
-        score:
-          type: integer
-        evidence:
-          type: string
-      required: [target_concept_id, score, evidence]
-    updated_concept_scores:
-      type: array
-      items:
-        type: object
-        properties:
-          concept_id:
-            type: string
-          score:
-            type: integer
-          evidence:
-            type: string
-        required: [concept_id, score, evidence]
-    misconceptions_detected:
-      type: array
-      items:
-        type: string
-    next_question_target:
+    reply:
       type: string
-    next_question:
-      type: string
+      description: Your text response or next question to the student.
+    score:
+      type: integer
+      description: The student's current mastery score from 0 to 100.
     summary:
       type: string
       description: A brief evaluative summary of the user's understanding of this lesson so far.
     tip:
       type: string
-      description: An instructional nudge (20 words or less) guiding the student on how to improve.
-  required: [current_question_evaluation, updated_concept_scores, misconceptions_detected, next_question_target, next_question, summary, tip]
+      description: An instructional nudge (20 words or less) guiding the student on how to improve their score.
+  required: [reply, score, summary, tip]
   additionalProperties: false
 ui:
   title: Lesson Assessment

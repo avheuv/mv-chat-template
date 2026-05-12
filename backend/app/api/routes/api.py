@@ -3,9 +3,11 @@ from typing import List
 
 from app.core.prototype_loader import prototype_loader, PrototypeConfig
 import uuid
-from app.models.chat import ChatStartRequest, ChatSession, ChatSendRequest, ChatResponse, SaveScoreRequest
+from app.models.chat import ChatStartRequest, ChatSession, ChatSendRequest, ChatResponse, SaveScoreRequest, RealtimeClientSecretRequest
 from app.services.chat_service import chat_service
 from app.services.firestore_service import firestore_service
+from app.core.config import settings
+import httpx
 
 router = APIRouter()
 
@@ -104,6 +106,93 @@ async def send_chat(request: ChatSendRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/api/realtime/client-secret")
+async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
+    session = await chat_service.get_session(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    prototype = prototype_loader.get_prototype(session.prototype_id)
+    if not prototype:
+        raise HTTPException(status_code=404, detail="Prototype not found")
+
+    if prototype.ui.mode != "voice_assessment":
+        raise HTTPException(status_code=400, detail="Prototype is not configured for realtime voice assessment")
+
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key is not configured")
+
+    system_message = next((m for m in session.messages if m.role == "system"), None)
+    instructions = system_message.content if system_message else prototype.systemPrompt
+    overrides = await firestore_service.get_prototype_overrides(
+        prototype.id, prototype.systemPrompt, prototype.model
+    )
+    model_to_use = overrides["model"]
+
+    session_config = {
+        "session": {
+            "type": "realtime",
+            "model": model_to_use,
+            "instructions": instructions,
+            "audio": {
+                "output": {"voice": "marin"}
+            },
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "update_assessment_scores",
+                    "description": "Update the visible assessment scores after a substantive student response.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "understanding_score": {
+                                "type": "integer",
+                                "description": "Student understanding score from 0 to 100.",
+                                "minimum": 0,
+                                "maximum": 100
+                            },
+                            "engagement_score": {
+                                "type": "integer",
+                                "description": "Student engagement score from 0 to 100.",
+                                "minimum": 0,
+                                "maximum": 100
+                            },
+                            "summary": {
+                                "type": "string",
+                                "description": "Brief evaluative summary of the student's understanding so far."
+                            },
+                            "tip": {
+                                "type": "string",
+                                "description": "Instructional nudge of 20 words or less."
+                            }
+                        },
+                        "required": ["understanding_score", "engagement_score", "summary", "tip"],
+                        "additionalProperties": False
+                    }
+                }
+            ],
+            "tool_choice": "auto"
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/realtime/client_secrets",
+                headers={
+                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json=session_config
+            )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as e:
+        detail = e.response.text or "Failed to create realtime client secret"
+        raise HTTPException(status_code=e.response.status_code, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create realtime client secret: {str(e)}")
 
 @router.get("/api/chat/session/{session_id}", response_model=ChatSession)
 async def get_session(session_id: str):

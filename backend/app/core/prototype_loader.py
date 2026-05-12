@@ -21,6 +21,7 @@ class PrototypeUIConfig(BaseModel):
     subtitle: str = ""
     placeholder: str = "Type your message..."
     readonly: bool = False
+    mode: str = "chat"
     inputs: List[UIInputConfig] = Field(default_factory=lambda: [UIInputConfig(id="user_id", label="Student Code")])
 
 class PrototypeConfig(BaseModel):

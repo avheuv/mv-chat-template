@@ -27,6 +27,9 @@ class ChatResponse(BaseModel):
     message: Message
     structured_data: Optional[Dict[str, Any]] = None
 
+class RealtimeClientSecretRequest(BaseModel):
+    session_id: str
+
 class SaveScoreRequest(BaseModel):
     user_id: str
     lesson_topic: str

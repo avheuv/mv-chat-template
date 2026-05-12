@@ -24,6 +24,7 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
+    mode?: 'chat' | 'voice_assessment';
     inputs: UIInputConfig[];
   }
 };
@@ -48,6 +49,10 @@ type AssessmentData = {
   tip?: string;
 };
 
+type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'connected' | 'error';
+
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'An unexpected error occurred';
+
 function App() {
   const [prototypes, setPrototypes] = useState<Prototype[]>([]);
   const [selectedPrototypeId, setSelectedPrototypeId] = useState<string>('');
@@ -70,6 +75,15 @@ function App() {
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
   const [savingScore, setSavingScore] = useState(false);
 
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceLog, setVoiceLog] = useState<string[]>([]);
+  const [tutorCaption, setTutorCaption] = useState('');
+
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(120);
 
@@ -86,7 +100,7 @@ function App() {
   useEffect(() => {
     if (view === 'chat' && composerWrapRef.current) {
       const resizeObserver = new ResizeObserver((entries) => {
-        for (let entry of entries) {
+        for (const entry of entries) {
           if (entry.target === composerWrapRef.current) {
              setComposerHeight(entry.contentRect.height);
              scrollToBottom(); // Re-scroll if height changes to maintain visibility
@@ -129,6 +143,23 @@ function App() {
     setView('splash');
   };
 
+  const resetVoiceConnection = () => {
+    dataChannelRef.current?.close();
+    peerConnectionRef.current?.close();
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    dataChannelRef.current = null;
+    peerConnectionRef.current = null;
+    localStreamRef.current = null;
+    remoteAudioRef.current = null;
+    setVoiceActive(false);
+    setVoiceStatus('idle');
+    setTutorCaption('');
+  };
+
+  useEffect(() => {
+    return () => resetVoiceConnection();
+  }, []);
+
   const handleStartSession = async () => {
     // Validation: make sure all required fields defined in YAML have some value
     const prototype = prototypes.find(p => p.id === selectedPrototypeId);
@@ -154,10 +185,14 @@ function App() {
       });
       if (!res.ok) throw new Error('Failed to start session');
       const data = await res.json();
+      resetVoiceConnection();
+      setAssessmentData(null);
+      setVoiceLog([]);
+      setTutorCaption('');
       setSession(data);
       setView('chat');
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -215,8 +250,8 @@ function App() {
       const sessionRes = await fetch(`${API_BASE}/chat/session/${session.id}`);
       const sessionData = await sessionRes.json();
       setSession(sessionData);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -224,6 +259,148 @@ function App() {
 
   const activePrototype = prototypes.find(p => p.id === selectedPrototypeId);
   const activePrototypeUI = activePrototype?.ui;
+  const isVoiceAssessment = activePrototypeUI?.mode === 'voice_assessment';
+
+
+  const handleStartVoiceChat = async () => {
+    if (!session || voiceStatus === 'connecting') return;
+
+    resetVoiceConnection();
+    setError('');
+    setVoiceLog(['Connecting to the voice assessment...']);
+    setVoiceStatus('connecting');
+
+    try {
+      const tokenRes = await fetch(`${API_BASE}/realtime/client-secret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: session.id })
+      });
+      if (!tokenRes.ok) throw new Error('Failed to prepare voice session');
+      const tokenData = await tokenRes.json();
+      const ephemeralKey = tokenData.value || tokenData.client_secret?.value;
+      if (!ephemeralKey) throw new Error('Voice session did not return an ephemeral key');
+
+      const pc = new RTCPeerConnection();
+      peerConnectionRef.current = pc;
+
+      const audioElement = document.createElement('audio');
+      audioElement.autoplay = true;
+      remoteAudioRef.current = audioElement;
+      pc.ontrack = (event) => {
+        audioElement.srcObject = event.streams[0];
+      };
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = mediaStream;
+      pc.addTrack(mediaStream.getTracks()[0]);
+
+      const dc = pc.createDataChannel('oai-events');
+      dataChannelRef.current = dc;
+
+      dc.addEventListener('open', () => {
+        setVoiceActive(true);
+        setVoiceStatus('connected');
+        setVoiceLog(prev => [...prev, 'Connected. The tutor will begin speaking shortly.']);
+        dc.send(JSON.stringify({
+          type: 'response.create',
+          response: {
+            instructions: 'Greet the student briefly and ask the first assessment question about the lesson objective.'
+          }
+        }));
+      });
+
+      dc.addEventListener('message', (event) => {
+        const realtimeEvent = JSON.parse(event.data);
+
+        if (realtimeEvent.type === 'response.created') {
+          setTutorCaption('');
+        }
+        if (realtimeEvent.type === 'input_audio_buffer.speech_started') {
+          setVoiceStatus('listening');
+        }
+        if (realtimeEvent.type === 'response.audio.delta') {
+          setVoiceStatus('speaking');
+        }
+        if (realtimeEvent.type === 'response.audio_transcript.delta' && realtimeEvent.delta) {
+          setVoiceStatus('speaking');
+          setTutorCaption(prev => `${prev}${realtimeEvent.delta}`);
+        }
+        if (realtimeEvent.type === 'response.done') {
+          setVoiceStatus('connected');
+        }
+        if (realtimeEvent.type === 'conversation.item.input_audio_transcription.completed' && realtimeEvent.transcript) {
+          setVoiceLog(prev => [...prev.slice(-4), `You: ${realtimeEvent.transcript}`]);
+        }
+        if (realtimeEvent.type === 'response.audio_transcript.done' && realtimeEvent.transcript) {
+          setTutorCaption(realtimeEvent.transcript);
+          setVoiceLog(prev => [...prev.slice(-4), `Tutor: ${realtimeEvent.transcript}`]);
+        }
+        if (
+          realtimeEvent.type === 'response.function_call_arguments.done' &&
+          realtimeEvent.name === 'update_assessment_scores'
+        ) {
+          const args = JSON.parse(realtimeEvent.arguments || '{}');
+          const nextAssessmentData = {
+            score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
+            engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
+            summary: args.summary || '',
+            tip: args.tip
+          };
+
+          setAssessmentData(nextAssessmentData);
+
+          if (realtimeEvent.call_id && dc.readyState === 'open') {
+            dc.send(JSON.stringify({
+              type: 'conversation.item.create',
+              item: {
+                type: 'function_call_output',
+                call_id: realtimeEvent.call_id,
+                output: JSON.stringify({ status: 'scores_updated' })
+              }
+            }));
+            dc.send(JSON.stringify({
+              type: 'response.create',
+              response: {
+                instructions: 'Acknowledge the student briefly, then ask one focused follow-up question about the lesson objective.'
+              }
+            }));
+          }
+        }
+        if (realtimeEvent.type === 'error') {
+          setVoiceStatus('error');
+          setError(realtimeEvent.error?.message || 'Voice session error');
+        }
+      });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
+        method: 'POST',
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${ephemeralKey}`,
+          'Content-Type': 'application/sdp'
+        }
+      });
+      if (!sdpRes.ok) throw new Error('Failed to connect voice chat');
+
+      await pc.setRemoteDescription({
+        type: 'answer',
+        sdp: await sdpRes.text()
+      });
+    } catch (e: unknown) {
+      resetVoiceConnection();
+      setVoiceStatus('error');
+      setError(getErrorMessage(e));
+    }
+  };
+
+  const handleStopVoiceChat = () => {
+    resetVoiceConnection();
+    setVoiceLog(prev => [...prev, 'Voice chat ended.']);
+  };
 
   const handleSaveScore = async () => {
     if (!session || !assessmentData || savingScore) return;
@@ -242,8 +419,8 @@ function App() {
       });
       if (!res.ok) throw new Error('Failed to save score');
       alert('Score saved successfully!');
-    } catch (e: any) {
-      alert(`Error saving score: ${e.message}`);
+    } catch (e: unknown) {
+      alert(`Error saving score: ${getErrorMessage(e)}`);
     } finally {
       setSavingScore(false);
     }
@@ -348,6 +525,93 @@ function App() {
       .replace(/\\\)/g, '$');
   };
 
+  if (isVoiceAssessment) {
+    const statusLabel = {
+      idle: 'Ready to start',
+      connecting: 'Connecting...',
+      listening: 'Listening',
+      speaking: 'Tutor speaking',
+      connected: 'Connected',
+      error: 'Needs attention'
+    }[voiceStatus];
+
+    return (
+      <div className="act-app-shell">
+        <div className="act-app-header">
+          <div className="act-brand">{activePrototypeUI?.title || 'Voice Assessment'}</div>
+        </div>
+        <main className="act-main">
+          <section className="act-voice-card act-card">
+            <p className="act-voice-disclosure">You are speaking with an AI-generated voice tutor, not a human.</p>
+            <div className={`act-voice-orb act-voice-orb-${voiceStatus}`} aria-label={statusLabel}>
+              <span className="act-voice-orb-ring act-voice-orb-ring-outer" />
+              <span className="act-voice-orb-ring act-voice-orb-ring-inner" />
+              <span className="act-voice-orb-core" />
+              <span className="act-voice-orb-shine" />
+            </div>
+            <h1>{statusLabel}</h1>
+            <p>
+              Click start, allow microphone access, and answer the tutor out loud. Scores update as the voice model evaluates the conversation.
+            </p>
+            <div className="act-voice-caption" aria-live="polite">
+              {tutorCaption || 'Tutor captions will appear here as the AI speaks.'}
+            </div>
+            <div className="act-voice-controls">
+              <button
+                className="act-primary-btn"
+                onClick={handleStartVoiceChat}
+                disabled={voiceActive || voiceStatus === 'connecting'}
+              >
+                {voiceStatus === 'connecting' ? 'Connecting...' : 'Start Voice Chat'}
+              </button>
+              <button
+                className="act-secondary-btn"
+                onClick={handleStopVoiceChat}
+                disabled={!voiceActive}
+              >
+                End Voice Chat
+              </button>
+            </div>
+            {error && <div className="act-error-message">{error}</div>}
+            {voiceLog.length > 0 && (
+              <div className="act-voice-log">
+                {voiceLog.map((entry, index) => <div key={`${entry}-${index}`}>{entry}</div>)}
+              </div>
+            )}
+          </section>
+
+          <section className="act-score-dock act-card">
+            <div className="act-score-header">
+              <span>Assessment Scores</span>
+              <button
+                className="act-save-score-btn"
+                onClick={handleSaveScore}
+                disabled={!assessmentData || savingScore}
+              >
+                {savingScore ? 'Saving...' : 'Save Score'}
+              </button>
+            </div>
+            <div className="act-score-row">
+              <span>Engagement</span>
+              <div className="act-score-track">
+                <div className="act-score-fill act-score-fill-engagement" style={{ width: `${assessmentData?.engagement_score || 0}%` }} />
+              </div>
+              <strong>{assessmentData?.engagement_score ?? '--'}/100</strong>
+            </div>
+            <div className="act-score-row">
+              <span>Understanding</span>
+              <div className="act-score-track">
+                <div className="act-score-fill act-score-fill-understanding" style={{ width: `${assessmentData?.score || 0}%` }} />
+              </div>
+              <strong>{assessmentData?.score ?? '--'}/100</strong>
+            </div>
+            {assessmentData?.tip && <p className="act-score-tip"><strong>Tip:</strong> {assessmentData.tip}</p>}
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="act-app-shell">
       <div className="act-app-header">
@@ -362,7 +626,7 @@ function App() {
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
                   components={{
-                    a: ({ node, ...props }) => (
+                    a: (props) => (
                       <a {...props} target="_blank" rel="noopener noreferrer" />
                     )
                   }}

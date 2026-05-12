@@ -478,6 +478,26 @@ body {
 .act-voice-orb-speaking .act-voice-orb-core {
   background: radial-gradient(circle at 36% 28%, #ffffff 0 10%, #fed7aa 26%, #f97316 63%, #9a3412 100%);
   box-shadow: 0 0 52px rgba(249, 115, 22, 0.62);
+.act-voice-orb {
+  width: 188px;
+  height: 188px;
+  margin: 8px auto 24px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #94a3b8 38%, #334155 100%);
+  box-shadow: 0 0 45px rgba(51, 65, 85, 0.25);
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.act-voice-orb-listening {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #38bdf8 35%, #0369a1 100%);
+  box-shadow: 0 0 55px rgba(14, 165, 233, 0.45);
+  animation: act-orb-vibrate-listening 0.8s infinite ease-in-out;
+}
+
+.act-voice-orb-speaking {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #f97316 35%, #b45309 100%);
+  box-shadow: 0 0 55px rgba(249, 115, 22, 0.45);
+  animation: act-orb-vibrate-speaking 0.58s infinite ease-in-out;
 }
 
 .act-voice-orb-connecting,
@@ -517,6 +537,28 @@ body {
 @keyframes act-orb-ring-pulse {
   0% { opacity: 0.72; transform: scale(0.92); }
   100% { opacity: 0; transform: scale(1.2); }
+  background: radial-gradient(circle at 35% 30%, #ffffff, #a78bfa 35%, #6d28d9 100%);
+  box-shadow: 0 0 55px rgba(124, 58, 237, 0.35);
+}
+
+.act-voice-orb-error {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #f87171 35%, #991b1b 100%);
+  box-shadow: 0 0 55px rgba(220, 38, 38, 0.35);
+}
+
+@keyframes act-orb-vibrate-listening {
+  0%, 100% { transform: scale(1) translate(0, 0); }
+  25% { transform: scale(1.025) translate(1px, -1px); }
+  50% { transform: scale(0.985) translate(-1px, 1px); }
+  75% { transform: scale(1.015) translate(1px, 1px); }
+}
+
+@keyframes act-orb-vibrate-speaking {
+  0%, 100% { transform: scale(1) translate(0, 0); }
+  20% { transform: scale(1.04) translate(-2px, 1px); }
+  40% { transform: scale(0.98) translate(2px, -1px); }
+  60% { transform: scale(1.03) translate(1px, 2px); }
+  80% { transform: scale(0.99) translate(-1px, -2px); }
 }
 
 .act-voice-card h1 {

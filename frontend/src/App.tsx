@@ -150,6 +150,7 @@ function App() {
   }, []);
 
   const resetVoiceConnection = useCallback(() => {
+  const resetVoiceConnection = () => {
     dataChannelRef.current?.close();
     peerConnectionRef.current?.close();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -163,6 +164,13 @@ function App() {
   useEffect(() => {
     return () => resetVoiceConnection();
   }, [resetVoiceConnection]);
+    setVoiceActive(false);
+    setVoiceStatus('idle');
+  };
+
+  useEffect(() => {
+    return () => resetVoiceConnection();
+  }, []);
 
   const handleStartSession = async () => {
     // Validation: make sure all required fields defined in YAML have some value
@@ -346,6 +354,7 @@ function App() {
         ) {
           const args = JSON.parse(realtimeEvent.arguments || '{}');
           const nextAssessmentData = {
+          setAssessmentData({
             score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
             engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
             summary: args.summary || '',
@@ -370,6 +379,7 @@ function App() {
               }
             }));
           }
+          });
         }
         if (realtimeEvent.type === 'error') {
           setVoiceStatus('error');
@@ -553,6 +563,7 @@ function App() {
               <span className="act-voice-orb-core" />
               <span className="act-voice-orb-shine" />
             </div>
+            <div className={`act-voice-orb act-voice-orb-${voiceStatus}`} aria-label={statusLabel} />
             <h1>{statusLabel}</h1>
             <p>
               Click start, allow microphone access, and answer the tutor out loud. Scores update as the voice model evaluates the conversation.

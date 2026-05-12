@@ -375,7 +375,7 @@ body {
   font-weight: 700;
 }
 
-
+/* Voice assessment interface */
 .act-voice-orb {
   position: relative;
   isolation: isolate;
@@ -530,7 +530,6 @@ body {
   color: var(--muted);
   line-height: 1.55;
 }
-
 
 .act-voice-caption {
   min-height: 72px;

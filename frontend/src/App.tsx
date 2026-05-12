@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -143,7 +143,13 @@ function App() {
     setView('splash');
   };
 
-  const resetVoiceConnection = () => {
+  const resetVoiceDisplayState = useCallback(() => {
+    setVoiceActive(false);
+    setVoiceStatus('idle');
+    setTutorCaption('');
+  }, []);
+
+  const resetVoiceConnection = useCallback(() => {
     dataChannelRef.current?.close();
     peerConnectionRef.current?.close();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -151,14 +157,12 @@ function App() {
     peerConnectionRef.current = null;
     localStreamRef.current = null;
     remoteAudioRef.current = null;
-    setVoiceActive(false);
-    setVoiceStatus('idle');
-    setTutorCaption('');
-  };
+    resetVoiceDisplayState();
+  }, [resetVoiceDisplayState]);
 
   useEffect(() => {
     return () => resetVoiceConnection();
-  }, []);
+  }, [resetVoiceConnection]);
 
   const handleStartSession = async () => {
     // Validation: make sure all required fields defined in YAML have some value

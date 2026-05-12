@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -51,6 +51,12 @@ type AssessmentData = {
 
 type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'connected' | 'error';
 
+type VoiceMeter = {
+  analyser: AnalyserNode;
+  data: Uint8Array<ArrayBuffer>;
+  source: MediaStreamAudioSourceNode;
+};
+
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'An unexpected error occurred';
 
 function App() {
@@ -80,8 +86,15 @@ function App() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
+  const voiceStatusRef = useRef<VoiceStatus>('idle');
   const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceLevel, setVoiceLevel] = useState(0);
+  const voiceLevelRef = useRef(0);
   const [voiceLog, setVoiceLog] = useState<string[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const voiceMeterFrameRef = useRef<number | null>(null);
+  const localVoiceMeterRef = useRef<VoiceMeter | null>(null);
+  const remoteVoiceMeterRef = useRef<VoiceMeter | null>(null);
 
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(120);
@@ -95,6 +108,10 @@ function App() {
       scrollToBottom();
     }
   }, [session?.messages, loading, view]);
+
+  useEffect(() => {
+    voiceStatusRef.current = voiceStatus;
+  }, [voiceStatus]);
 
   useEffect(() => {
     if (view === 'chat' && composerWrapRef.current) {
@@ -142,20 +159,100 @@ function App() {
     setView('splash');
   };
 
+  const ensureAudioContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext();
+    }
+    return audioContextRef.current;
+  };
+
+  const createVoiceMeter = (stream: MediaStream) => {
+    const audioContext = ensureAudioContext();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.74;
+
+    const source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    return {
+      analyser,
+      data: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)),
+      source
+    };
+  };
+
+  const startVoiceMeterLoop = () => {
+    if (voiceMeterFrameRef.current !== null) return;
+
+    const readMeterLevel = (meter: VoiceMeter | null) => {
+      if (!meter) return 0;
+
+      meter.analyser.getByteTimeDomainData(meter.data);
+      const sumSquares = meter.data.reduce((sum, value) => {
+        const centeredValue = (value - 128) / 128;
+        return sum + centeredValue * centeredValue;
+      }, 0);
+      const rms = Math.sqrt(sumSquares / meter.data.length);
+      return Math.min(1, rms * 4.6);
+    };
+
+    const tick = () => {
+      const status = voiceStatusRef.current;
+      const activeLevel = status === 'listening'
+        ? readMeterLevel(localVoiceMeterRef.current)
+        : status === 'speaking'
+          ? readMeterLevel(remoteVoiceMeterRef.current)
+          : 0;
+      const easing = activeLevel > voiceLevelRef.current ? 0.42 : 0.16;
+      const nextLevel = voiceLevelRef.current + (activeLevel - voiceLevelRef.current) * easing;
+
+      voiceLevelRef.current = nextLevel;
+      setVoiceLevel(nextLevel);
+      voiceMeterFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    voiceMeterFrameRef.current = window.requestAnimationFrame(tick);
+  };
+
+  const stopVoiceMeterLoop = () => {
+    if (voiceMeterFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceMeterFrameRef.current);
+      voiceMeterFrameRef.current = null;
+    }
+  };
+
+  const disconnectVoiceMeter = (meter: VoiceMeter | null) => {
+    meter?.source.disconnect();
+  };
+
   const resetVoiceConnection = () => {
     dataChannelRef.current?.close();
     peerConnectionRef.current?.close();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
+    stopVoiceMeterLoop();
+    disconnectVoiceMeter(localVoiceMeterRef.current);
+    disconnectVoiceMeter(remoteVoiceMeterRef.current);
+    if (audioContextRef.current?.state !== 'closed') {
+      void audioContextRef.current?.close();
+    }
     dataChannelRef.current = null;
     peerConnectionRef.current = null;
     localStreamRef.current = null;
     remoteAudioRef.current = null;
+    localVoiceMeterRef.current = null;
+    remoteVoiceMeterRef.current = null;
+    audioContextRef.current = null;
+    voiceLevelRef.current = 0;
+    setVoiceLevel(0);
     setVoiceActive(false);
     setVoiceStatus('idle');
   };
 
   useEffect(() => {
     return () => resetVoiceConnection();
+    // Run only on unmount so active calls are not reset by render-time callback identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleStartSession = async () => {
@@ -285,11 +382,16 @@ function App() {
       audioElement.autoplay = true;
       remoteAudioRef.current = audioElement;
       pc.ontrack = (event) => {
-        audioElement.srcObject = event.streams[0];
+        const [remoteStream] = event.streams;
+        audioElement.srcObject = remoteStream;
+        remoteVoiceMeterRef.current = createVoiceMeter(remoteStream);
+        startVoiceMeterLoop();
       };
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = mediaStream;
+      localVoiceMeterRef.current = createVoiceMeter(mediaStream);
+      startVoiceMeterLoop();
       pc.addTrack(mediaStream.getTracks()[0]);
 
       const dc = pc.createDataChannel('oai-events');
@@ -497,13 +599,14 @@ function App() {
 
   if (isVoiceAssessment) {
     const statusLabel = {
-      idle: 'Ready to start',
+      idle: 'Ready',
       connecting: 'Connecting...',
-      listening: 'Listening',
-      speaking: 'Tutor speaking',
-      connected: 'Connected',
+      listening: 'Listening...',
+      speaking: 'Speaking...',
+      connected: 'Ready',
       error: 'Needs attention'
     }[voiceStatus];
+    const voiceLevelStyle = { '--voice-level': voiceLevel.toFixed(3) } as CSSProperties;
 
     return (
       <div className="act-app-shell">
@@ -513,8 +616,38 @@ function App() {
         <main className="act-main">
           <section className="act-voice-card act-card">
             <p className="act-voice-disclosure">You are speaking with an AI-generated voice tutor, not a human.</p>
-            <div className={`act-voice-orb act-voice-orb-${voiceStatus}`} aria-label={statusLabel} />
-            <h1>{statusLabel}</h1>
+            <div
+              className={`act-voice-orb-stage act-voice-orb-stage-${voiceStatus}`}
+              style={voiceLevelStyle}
+              aria-label={statusLabel}
+              role="img"
+            >
+              <div className="act-voice-ring act-voice-ring-one" />
+              <div className="act-voice-ring act-voice-ring-two" />
+              <div className="act-voice-ring act-voice-ring-three" />
+              <div className="act-voice-particles" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className={`act-voice-orb act-voice-orb-${voiceStatus}`}>
+                <span className="act-voice-orb-shine" />
+              </div>
+              <div className="act-voice-waveform" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+            <div className={`act-voice-status-label act-voice-status-label-${voiceStatus}`}>{statusLabel}</div>
+            <h1>{voiceStatus === 'speaking' ? 'Tutor speaking' : voiceStatus === 'listening' ? 'Listening closely' : statusLabel}</h1>
             <p>
               Click start, allow microphone access, and answer the tutor out loud. Scores update as the voice model evaluates the conversation.
             </p>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -40,21 +40,32 @@ type ChatSession = {
   prototype_id: string;
   user_id: string;
   messages: Message[];
+  assessment_objectives?: string[];
 };
 
 type AssessmentData = {
-  score: number;
-  engagement_score: number;
+  sub_objective_scores: number[];
+  current_sub_objective_index: number;
   summary: string;
   tip?: string;
 };
 
 type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'connected' | 'error';
 
-type VoiceMeter = {
-  analyser: AnalyserNode;
-  data: Uint8Array<ArrayBuffer>;
-  source: MediaStreamAudioSourceNode;
+type AssessmentToolArgs = {
+  current_sub_objective_index?: number | string;
+  sub_objective_scores?: Array<number | string>;
+  understanding_score?: number | string;
+  engagement_score?: number | string;
+  summary?: string;
+  tip?: string;
+};
+
+type RealtimeFunctionCall = {
+  type?: string;
+  name?: string;
+  call_id?: string;
+  arguments?: string;
 };
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'An unexpected error occurred';
@@ -79,6 +90,7 @@ function App() {
 
   // State for the assessment prototype specific UI
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
+  const assessmentDataRef = useRef<AssessmentData | null>(null);
   const [savingScore, setSavingScore] = useState(false);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -88,13 +100,8 @@ function App() {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const voiceStatusRef = useRef<VoiceStatus>('idle');
   const [voiceActive, setVoiceActive] = useState(false);
-  const [voiceLevel, setVoiceLevel] = useState(0);
-  const voiceLevelRef = useRef(0);
-  const [voiceLog, setVoiceLog] = useState<string[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const voiceMeterFrameRef = useRef<number | null>(null);
-  const localVoiceMeterRef = useRef<VoiceMeter | null>(null);
-  const remoteVoiceMeterRef = useRef<VoiceMeter | null>(null);
+  const pushToTalkActiveRef = useRef(false);
+  const completedToolCallIdsRef = useRef<Set<string>>(new Set());
 
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(120);
@@ -112,6 +119,10 @@ function App() {
   useEffect(() => {
     voiceStatusRef.current = voiceStatus;
   }, [voiceStatus]);
+
+  useEffect(() => {
+    assessmentDataRef.current = assessmentData;
+  }, [assessmentData]);
 
   useEffect(() => {
     if (view === 'chat' && composerWrapRef.current) {
@@ -159,100 +170,22 @@ function App() {
     setView('splash');
   };
 
-  const ensureAudioContext = () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext();
-    }
-    return audioContextRef.current;
-  };
-
-  const createVoiceMeter = (stream: MediaStream) => {
-    const audioContext = ensureAudioContext();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.74;
-
-    const source = audioContext.createMediaStreamSource(stream);
-    source.connect(analyser);
-
-    return {
-      analyser,
-      data: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)),
-      source
-    };
-  };
-
-  const startVoiceMeterLoop = () => {
-    if (voiceMeterFrameRef.current !== null) return;
-
-    const readMeterLevel = (meter: VoiceMeter | null) => {
-      if (!meter) return 0;
-
-      meter.analyser.getByteTimeDomainData(meter.data);
-      const sumSquares = meter.data.reduce((sum, value) => {
-        const centeredValue = (value - 128) / 128;
-        return sum + centeredValue * centeredValue;
-      }, 0);
-      const rms = Math.sqrt(sumSquares / meter.data.length);
-      return Math.min(1, rms * 4.6);
-    };
-
-    const tick = () => {
-      const status = voiceStatusRef.current;
-      const activeLevel = status === 'listening'
-        ? readMeterLevel(localVoiceMeterRef.current)
-        : status === 'speaking'
-          ? readMeterLevel(remoteVoiceMeterRef.current)
-          : 0;
-      const easing = activeLevel > voiceLevelRef.current ? 0.42 : 0.16;
-      const nextLevel = voiceLevelRef.current + (activeLevel - voiceLevelRef.current) * easing;
-
-      voiceLevelRef.current = nextLevel;
-      setVoiceLevel(nextLevel);
-      voiceMeterFrameRef.current = window.requestAnimationFrame(tick);
-    };
-
-    voiceMeterFrameRef.current = window.requestAnimationFrame(tick);
-  };
-
-  const stopVoiceMeterLoop = () => {
-    if (voiceMeterFrameRef.current !== null) {
-      window.cancelAnimationFrame(voiceMeterFrameRef.current);
-      voiceMeterFrameRef.current = null;
-    }
-  };
-
-  const disconnectVoiceMeter = (meter: VoiceMeter | null) => {
-    meter?.source.disconnect();
-  };
-
   const resetVoiceConnection = () => {
     dataChannelRef.current?.close();
     peerConnectionRef.current?.close();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
-    stopVoiceMeterLoop();
-    disconnectVoiceMeter(localVoiceMeterRef.current);
-    disconnectVoiceMeter(remoteVoiceMeterRef.current);
-    if (audioContextRef.current?.state !== 'closed') {
-      void audioContextRef.current?.close();
-    }
     dataChannelRef.current = null;
     peerConnectionRef.current = null;
     localStreamRef.current = null;
     remoteAudioRef.current = null;
-    localVoiceMeterRef.current = null;
-    remoteVoiceMeterRef.current = null;
-    audioContextRef.current = null;
-    voiceLevelRef.current = 0;
-    setVoiceLevel(0);
+    pushToTalkActiveRef.current = false;
+    completedToolCallIdsRef.current.clear();
     setVoiceActive(false);
     setVoiceStatus('idle');
   };
 
   useEffect(() => {
     return () => resetVoiceConnection();
-    // Run only on unmount so active calls are not reset by render-time callback identity changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleStartSession = async () => {
@@ -282,7 +215,6 @@ function App() {
       const data = await res.json();
       resetVoiceConnection();
       setAssessmentData(null);
-      setVoiceLog([]);
       setSession(data);
       setView('chat');
     } catch (e: unknown) {
@@ -334,8 +266,8 @@ function App() {
          const engagementScore = Math.min(100, totalWords);
 
          setAssessmentData({
-           score: chatResponse.structured_data.score,
-           engagement_score: engagementScore,
+           sub_objective_scores: [chatResponse.structured_data.score, engagementScore, 0],
+           current_sub_objective_index: 0,
            summary: chatResponse.structured_data.summary || '',
            tip: chatResponse.structured_data.tip
          });
@@ -355,13 +287,55 @@ function App() {
   const activePrototypeUI = activePrototype?.ui;
   const isVoiceAssessment = activePrototypeUI?.mode === 'voice_assessment';
 
+  const getSelectedLessonTopicTitle = () => {
+    const lessonTopicInput = activePrototypeUI?.inputs.find(input => input.id === 'lesson_code' || input.label.toLowerCase().includes('topic'));
+    const fullTopicTitle = lessonTopicInput?.options?.find(option => option.value === inputValues[lessonTopicInput.id])?.label
+      || (lessonTopicInput ? inputValues[lessonTopicInput.id] : '')
+      || 'this topic';
+
+    return fullTopicTitle.split('-')[0].trim() || fullTopicTitle;
+  };
+
+  const getVoiceLessonContext = () => {
+    const systemContent = session?.messages.find(message => message.role === 'system')?.content || '';
+    const lessonContextMatch = systemContent.match(/(?:^|\n)\[fetchLessonData\]\n([\s\S]*?)(?=\n\n\[|$)/);
+
+    return lessonContextMatch?.[1]?.trim() || `LESSON DATA:\nTopic: ${getSelectedLessonTopicTitle()}`;
+  };
+
+  const buildInitialVoiceInstructions = () => [
+    'Start the voice assessment with a brief greeting, then ask exactly one focused first assessment question.',
+    `Selected lesson topic: ${getSelectedLessonTopicTitle()}`,
+    `Backend lesson context:\n${getVoiceLessonContext()}`,
+    `Assessment sub-objectives:\n${getAssessmentObjectives().map((objective, index) => `${index + 1}. ${objective}`).join('\n')}`,
+    'Begin with sub-objective 1. The first question must be specific to sub-objective 1 and the selected lesson topic. Do not ask a generic question like “tell me one thing you know about this lesson.”'
+  ].join('\n\n');
+
+  const getAssessmentObjectives = () => {
+    const objectives = session?.assessment_objectives?.filter(Boolean) || [];
+    if (objectives.length >= 3) return objectives.slice(0, 3);
+
+    return [
+      `Identify the key idea in ${getSelectedLessonTopicTitle()}.`,
+      `Explain how ${getSelectedLessonTopicTitle()} works.`,
+      `Apply ${getSelectedLessonTopicTitle()} independently.`
+    ];
+  };
+
+  const clampScore = (value: number | string | undefined) => Math.max(0, Math.min(100, Number(value) || 0));
+
+  const getAssessmentScores = () => {
+    const scores = assessmentData?.sub_objective_scores || [];
+    return [0, 1, 2].map(index => clampScore(scores[index] || 0));
+  };
+
+  const isAssessmentComplete = () => getAssessmentScores().every(score => score >= 85);
 
   const handleStartVoiceChat = async () => {
     if (!session || voiceStatus === 'connecting') return;
 
     resetVoiceConnection();
     setError('');
-    setVoiceLog(['Connecting to the voice assessment...']);
     setVoiceStatus('connecting');
 
     try {
@@ -384,15 +358,15 @@ function App() {
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams;
         audioElement.srcObject = remoteStream;
-        remoteVoiceMeterRef.current = createVoiceMeter(remoteStream);
-        startVoiceMeterLoop();
       };
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = mediaStream;
-      localVoiceMeterRef.current = createVoiceMeter(mediaStream);
-      startVoiceMeterLoop();
-      pc.addTrack(mediaStream.getTracks()[0]);
+      const [localAudioTrack] = mediaStream.getAudioTracks();
+      if (localAudioTrack) {
+        localAudioTrack.enabled = false;
+        pc.addTrack(localAudioTrack);
+      }
 
       const dc = pc.createDataChannel('oai-events');
       dataChannelRef.current = dc;
@@ -400,11 +374,10 @@ function App() {
       dc.addEventListener('open', () => {
         setVoiceActive(true);
         setVoiceStatus('connected');
-        setVoiceLog(prev => [...prev, 'Connected. The tutor will begin speaking shortly.']);
         dc.send(JSON.stringify({
           type: 'response.create',
           response: {
-            instructions: 'Greet the student briefly and ask the first assessment question about the lesson objective.'
+            instructions: buildInitialVoiceInstructions()
           }
         }));
       });
@@ -412,32 +385,28 @@ function App() {
       dc.addEventListener('message', (event) => {
         const realtimeEvent = JSON.parse(event.data);
 
-        if (realtimeEvent.type === 'input_audio_buffer.speech_started') {
-          setVoiceStatus('listening');
-        }
         if (realtimeEvent.type === 'response.audio.delta') {
           setVoiceStatus('speaking');
         }
         if (realtimeEvent.type === 'response.done') {
-          setVoiceStatus('connected');
-        }
-        if (realtimeEvent.type === 'conversation.item.input_audio_transcription.completed' && realtimeEvent.transcript) {
-          setVoiceLog(prev => [...prev.slice(-4), `You: ${realtimeEvent.transcript}`]);
-        }
-        if (realtimeEvent.type === 'response.audio_transcript.done' && realtimeEvent.transcript) {
-          setVoiceLog(prev => [...prev.slice(-4), `Tutor: ${realtimeEvent.transcript}`]);
+          const assessmentToolCall = realtimeEvent.response?.output?.find((item: RealtimeFunctionCall) => (
+            item.type === 'function_call' && item.name === 'update_assessment_scores'
+          ));
+
+          if (assessmentToolCall) {
+            const args = JSON.parse(assessmentToolCall.arguments || '{}');
+            completeAssessmentToolCall(assessmentToolCall.call_id, args);
+            applyAssessmentToolArgs(args);
+          } else if (!pushToTalkActiveRef.current) {
+            setVoiceStatus('connected');
+          }
         }
         if (
           realtimeEvent.type === 'response.function_call_arguments.done' &&
           realtimeEvent.name === 'update_assessment_scores'
         ) {
-          const args = JSON.parse(realtimeEvent.arguments || '{}');
-          setAssessmentData({
-            score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
-            engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
-            summary: args.summary || '',
-            tip: args.tip
-          });
+          // Wait for response.done before completing the tool call so we can
+          // update the UI and trigger exactly one verbal follow-up.
         }
         if (realtimeEvent.type === 'error') {
           setVoiceStatus('error');
@@ -469,28 +438,121 @@ function App() {
     }
   };
 
+  const setLocalMicrophoneEnabled = (enabled: boolean) => {
+    localStreamRef.current?.getAudioTracks().forEach(track => {
+      track.enabled = enabled;
+    });
+  };
+
+  const buildAssessmentDataFromToolArgs = (args: AssessmentToolArgs): AssessmentData => {
+    const previousScores = assessmentDataRef.current?.sub_objective_scores || [0, 0, 0];
+    const scores = args.sub_objective_scores?.length
+      ? [0, 1, 2].map(index => clampScore(args.sub_objective_scores?.[index]))
+      : [clampScore(args.understanding_score), clampScore(previousScores[1]), clampScore(previousScores[2])];
+    const firstIncompleteIndex = scores.findIndex(score => score < 85);
+
+    return {
+      sub_objective_scores: scores,
+      current_sub_objective_index: firstIncompleteIndex === -1 ? 2 : firstIncompleteIndex,
+      summary: args.summary || assessmentDataRef.current?.summary || '',
+      tip: args.tip
+    };
+  };
+
+  const applyAssessmentToolArgs = (args: AssessmentToolArgs) => {
+    const nextAssessmentData = buildAssessmentDataFromToolArgs(args);
+    assessmentDataRef.current = nextAssessmentData;
+    setAssessmentData(nextAssessmentData);
+  };
+
+  const completeAssessmentToolCall = (callId: string | undefined, args: AssessmentToolArgs) => {
+    const dc = dataChannelRef.current;
+    if (!callId || !dc || dc.readyState !== 'open' || completedToolCallIdsRef.current.has(callId)) return;
+    completedToolCallIdsRef.current.add(callId);
+
+    const previousScores = assessmentDataRef.current?.sub_objective_scores || [0, 0, 0];
+    const nextAssessmentData = buildAssessmentDataFromToolArgs(args);
+    const objectives = getAssessmentObjectives();
+    const scores = nextAssessmentData.sub_objective_scores;
+    const completedIndex = scores.findIndex((score, index) => score >= 85 && (previousScores[index] || 0) < 85);
+    const nextIncompleteIndex = scores.findIndex(score => score < 85);
+    const allComplete = nextIncompleteIndex === -1;
+
+    dc.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: callId,
+        output: JSON.stringify({
+          ok: true,
+          displayed_to_student: {
+            current_sub_objective_index: nextAssessmentData.current_sub_objective_index,
+            sub_objective_scores: scores,
+            summary: nextAssessmentData.summary,
+            tip: nextAssessmentData.tip || '',
+            submit_enabled: allComplete
+          }
+        })
+      }
+    }));
+
+    const transitionInstruction = allComplete
+      ? 'All three sub-objectives are mastered. Briefly congratulate the student and tell them they can submit the assessment now.'
+      : completedIndex !== -1
+        ? `Acknowledge that the student met sub-objective ${completedIndex + 1}: "${objectives[completedIndex]}". Then transition to sub-objective ${nextIncompleteIndex + 1}: "${objectives[nextIncompleteIndex]}" and ask one focused question about it.`
+        : `Give brief supportive feedback and ask one focused follow-up question about current sub-objective ${nextIncompleteIndex + 1}: "${objectives[nextIncompleteIndex]}".`;
+
+    dc.send(JSON.stringify({
+      type: 'response.create',
+      response: {
+        instructions: transitionInstruction
+      }
+    }));
+  };
+
+  const handlePushToTalkStart = () => {
+    if (!voiceActive || voiceStatus === 'connecting' || voiceStatus === 'error') return;
+    pushToTalkActiveRef.current = true;
+    setLocalMicrophoneEnabled(true);
+    setVoiceStatus('listening');
+  };
+
+  const handlePushToTalkEnd = () => {
+    if (!voiceActive) return;
+    pushToTalkActiveRef.current = false;
+    setLocalMicrophoneEnabled(false);
+    if (voiceStatusRef.current === 'listening') {
+      setVoiceStatus('connected');
+    }
+  };
+
   const handleStopVoiceChat = () => {
     resetVoiceConnection();
-    setVoiceLog(prev => [...prev, 'Voice chat ended.']);
   };
 
   const handleSaveScore = async () => {
-    if (!session || !assessmentData || savingScore) return;
+    if (!session || !assessmentData || savingScore || !isAssessmentComplete()) return;
     setSavingScore(true);
     try {
+      const scores = getAssessmentScores();
+      const subObjectives = getAssessmentObjectives().map((objective, index) => ({
+        objective,
+        score: scores[index],
+        mastered: scores[index] >= 85
+      }));
       const res = await fetch(`${API_BASE}/chat/save-score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: inputValues['user_id'] || 'unknown',
           lesson_topic: inputValues['lesson_code'] || 'unknown',
-          score: assessmentData.score,
-          engagement_score: assessmentData.engagement_score,
-          summary: assessmentData.summary
+          score: Math.round(scores.reduce((total, score) => total + score, 0) / scores.length),
+          summary: assessmentData.summary || 'The student met all three formative assessment sub-objectives.',
+          sub_objectives: subObjectives
         })
       });
       if (!res.ok) throw new Error('Failed to save score');
-      alert('Score saved successfully!');
+      alert('Assessment submitted successfully!');
     } catch (e: unknown) {
       alert(`Error saving score: ${getErrorMessage(e)}`);
     } finally {
@@ -599,65 +661,53 @@ function App() {
 
   if (isVoiceAssessment) {
     const statusLabel = {
-      idle: 'Ready',
-      connecting: 'Connecting...',
-      listening: 'Listening...',
-      speaking: 'Speaking...',
-      connected: 'Ready',
+      idle: 'Disconnected',
+      connecting: 'Connecting',
+      listening: 'Listening',
+      speaking: 'Speaking',
+      connected: 'Waiting',
       error: 'Needs attention'
     }[voiceStatus];
-    const voiceLevelStyle = { '--voice-level': voiceLevel.toFixed(3) } as CSSProperties;
+    const topicTitle = getSelectedLessonTopicTitle();
 
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
-          <div className="act-brand">{activePrototypeUI?.title || 'Voice Assessment'}</div>
+          <div className="act-brand">Voice-Based Formative Assessment</div>
         </div>
         <main className="act-main">
           <section className="act-voice-card act-card">
-            <p className="act-voice-disclosure">You are speaking with an AI-generated voice tutor, not a human.</p>
-            <div
-              className={`act-voice-orb-stage act-voice-orb-stage-${voiceStatus}`}
-              style={voiceLevelStyle}
-              aria-label={statusLabel}
-              role="img"
-            >
-              <div className="act-voice-ring act-voice-ring-one" />
-              <div className="act-voice-ring act-voice-ring-two" />
-              <div className="act-voice-ring act-voice-ring-three" />
-              <div className="act-voice-particles" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className={`act-voice-orb act-voice-orb-${voiceStatus}`}>
-                <span className="act-voice-orb-shine" />
-              </div>
-              <div className="act-voice-waveform" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
+            <p className="act-voice-disclosure">You are speaking with an AI-generated voice tutor.</p>
+            <div className="act-voice-intro">
+              <h1>Hi, I'm ALEX.</h1>
+              <p>Let's have a conversation about {topicTitle}.</p>
             </div>
             <div className={`act-voice-status-label act-voice-status-label-${voiceStatus}`}>{statusLabel}</div>
-            <h1>{voiceStatus === 'speaking' ? 'Tutor speaking' : voiceStatus === 'listening' ? 'Listening closely' : statusLabel}</h1>
-            <p>
-              Click start, allow microphone access, and answer the tutor out loud. Scores update as the voice model evaluates the conversation.
-            </p>
             <div className="act-voice-controls">
               <button
                 className="act-primary-btn"
-                onClick={handleStartVoiceChat}
-                disabled={voiceActive || voiceStatus === 'connecting'}
+                onClick={voiceActive ? undefined : handleStartVoiceChat}
+                onPointerDown={voiceActive ? handlePushToTalkStart : undefined}
+                onPointerUp={voiceActive ? handlePushToTalkEnd : undefined}
+                onPointerLeave={voiceActive ? handlePushToTalkEnd : undefined}
+                onPointerCancel={voiceActive ? handlePushToTalkEnd : undefined}
+                onKeyDown={voiceActive ? (event) => {
+                  if (event.key === ' ' || event.key === 'Enter') {
+                    event.preventDefault();
+                    handlePushToTalkStart();
+                  }
+                } : undefined}
+                onKeyUp={voiceActive ? (event) => {
+                  if (event.key === ' ' || event.key === 'Enter') {
+                    event.preventDefault();
+                    handlePushToTalkEnd();
+                  }
+                } : undefined}
+                aria-label={voiceActive ? 'Push and hold to talk' : 'Start voice chat'}
+                disabled={voiceStatus === 'connecting'}
+                type="button"
               >
-                {voiceStatus === 'connecting' ? 'Connecting...' : 'Start Voice Chat'}
+                {voiceStatus === 'connecting' ? 'Connecting...' : voiceActive ? 'Push to Talk' : 'Start Voice Chat'}
               </button>
               <button
                 className="act-secondary-btn"
@@ -668,39 +718,41 @@ function App() {
               </button>
             </div>
             {error && <div className="act-error-message">{error}</div>}
-            {voiceLog.length > 0 && (
-              <div className="act-voice-log">
-                {voiceLog.map((entry, index) => <div key={`${entry}-${index}`}>{entry}</div>)}
-              </div>
-            )}
           </section>
 
           <section className="act-score-dock act-card">
             <div className="act-score-header">
-              <span>Assessment Scores</span>
-              <button
-                className="act-save-score-btn"
-                onClick={handleSaveScore}
-                disabled={!assessmentData || savingScore}
-              >
-                {savingScore ? 'Saving...' : 'Save Score'}
-              </button>
+              <span>Assessment Steps</span>
             </div>
-            <div className="act-score-row">
-              <span>Engagement</span>
-              <div className="act-score-track">
-                <div className="act-score-fill act-score-fill-engagement" style={{ width: `${assessmentData?.engagement_score || 0}%` }} />
-              </div>
-              <strong>{assessmentData?.engagement_score ?? '--'}/100</strong>
-            </div>
-            <div className="act-score-row">
-              <span>Understanding</span>
-              <div className="act-score-track">
-                <div className="act-score-fill act-score-fill-understanding" style={{ width: `${assessmentData?.score || 0}%` }} />
-              </div>
-              <strong>{assessmentData?.score ?? '--'}/100</strong>
+            <div className="act-objective-list">
+              {getAssessmentObjectives().map((objective, index) => {
+                const score = getAssessmentScores()[index];
+                const mastered = score >= 85;
+
+                return (
+                  <div className="act-objective-score" key={`${objective}-${index}`}>
+                    <p className="act-objective-text">{objective}</p>
+                    <div className="act-objective-score-row">
+                      <div className="act-score-track act-score-track-objective" aria-label={`${objective} score`}>
+                        <div className="act-score-fill act-score-fill-objective" style={{ width: `${score}%` }} />
+                      </div>
+                      <strong>{score}/100</strong>
+                      <span className={`act-objective-check ${mastered ? 'act-objective-check-complete' : ''}`} aria-label={mastered ? 'Mastered' : 'Not yet mastered'}>
+                        ✓
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             {assessmentData?.tip && <p className="act-score-tip"><strong>Tip:</strong> {assessmentData.tip}</p>}
+            <button
+              className="act-submit-assessment-btn"
+              onClick={handleSaveScore}
+              disabled={!isAssessmentComplete() || savingScore}
+            >
+              {savingScore ? 'Submitting...' : 'Submit'}
+            </button>
           </section>
         </main>
       </div>
@@ -808,14 +860,14 @@ function App() {
                     overflow: 'hidden'
                   }}>
                     <div style={{
-                      width: `${assessmentData.engagement_score}%`,
+                      width: `${assessmentData.sub_objective_scores[1]}%`,
                       height: '100%',
                       backgroundColor: '#DC2626', // Red
                       transition: 'width 0.3s ease'
                     }}></div>
                   </div>
                   <span style={{ width: '45px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold', color: '#DC2626' }}>
-                    {assessmentData.engagement_score}/100
+                    {assessmentData.sub_objective_scores[1]}/100
                   </span>
                 </div>
 
@@ -830,14 +882,14 @@ function App() {
                     overflow: 'hidden'
                   }}>
                     <div style={{
-                      width: `${assessmentData.score}%`,
+                      width: `${assessmentData.sub_objective_scores[0]}%`,
                       height: '100%',
                       backgroundColor: '#1E3A8A', // Blue
                       transition: 'width 0.3s ease'
                     }}></div>
                   </div>
                   <span style={{ width: '45px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold', color: '#1E3A8A' }}>
-                    {assessmentData.score}/100
+                    {assessmentData.sub_objective_scores[0]}/100
                   </span>
                 </div>
 

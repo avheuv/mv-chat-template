@@ -12,6 +12,7 @@ class ChatSession(BaseModel):
     id: str
     prototype_id: str
     inputs: Dict[str, str] = Field(default_factory=dict)
+    assessment_objectives: List[str] = Field(default_factory=list)
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     messages: List[Message] = []
 
@@ -33,6 +34,7 @@ class RealtimeClientSecretRequest(BaseModel):
 class SaveScoreRequest(BaseModel):
     user_id: str
     lesson_topic: str
-    score: int
-    engagement_score: int
+    score: Optional[int] = None
+    engagement_score: Optional[int] = None
     summary: str
+    sub_objectives: List[Dict[str, Any]] = Field(default_factory=list)

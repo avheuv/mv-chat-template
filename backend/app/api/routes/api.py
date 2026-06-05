@@ -146,17 +146,22 @@ async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "understanding_score": {
+                            "current_sub_objective_index": {
                                 "type": "integer",
-                                "description": "Student understanding score from 0 to 100.",
+                                "description": "Zero-based index of the current sub-objective being assessed.",
                                 "minimum": 0,
-                                "maximum": 100
+                                "maximum": 2
                             },
-                            "engagement_score": {
-                                "type": "integer",
-                                "description": "Student engagement score from 0 to 100.",
-                                "minimum": 0,
-                                "maximum": 100
+                            "sub_objective_scores": {
+                                "type": "array",
+                                "description": "Exactly three student understanding scores from 0 to 100, one for each sequenced sub-objective. Keep future objective scores at 0 until assessed.",
+                                "minItems": 3,
+                                "maxItems": 3,
+                                "items": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                }
                             },
                             "summary": {
                                 "type": "string",
@@ -167,7 +172,7 @@ async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
                                 "description": "Instructional nudge of 20 words or less."
                             }
                         },
-                        "required": ["understanding_score", "engagement_score", "summary", "tip"],
+                        "required": ["current_sub_objective_index", "sub_objective_scores", "summary", "tip"],
                         "additionalProperties": False
                     }
                 }
@@ -214,6 +219,7 @@ async def save_score(request: SaveScoreRequest):
             "score": request.score,
             "engagement_score": request.engagement_score,
             "summary": request.summary,
+            "sub_objectives": request.sub_objectives,
             "created_at": firestore.SERVER_TIMESTAMP
         }
 

@@ -51,6 +51,20 @@ type AssessmentData = {
 
 type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'connected' | 'error';
 
+type AssessmentToolArgs = {
+  understanding_score?: number | string;
+  engagement_score?: number | string;
+  summary?: string;
+  tip?: string;
+};
+
+type RealtimeFunctionCall = {
+  type?: string;
+  name?: string;
+  call_id?: string;
+  arguments?: string;
+};
+
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'An unexpected error occurred';
 
 function App() {
@@ -83,6 +97,7 @@ function App() {
   const voiceStatusRef = useRef<VoiceStatus>('idle');
   const [voiceActive, setVoiceActive] = useState(false);
   const pushToTalkActiveRef = useRef(false);
+  const completedToolCallIdsRef = useRef<Set<string>>(new Set());
 
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(120);
@@ -156,6 +171,7 @@ function App() {
     localStreamRef.current = null;
     remoteAudioRef.current = null;
     pushToTalkActiveRef.current = false;
+    completedToolCallIdsRef.current.clear();
     setVoiceActive(false);
     setVoiceStatus('idle');
   };
@@ -322,7 +338,15 @@ function App() {
           setVoiceStatus('speaking');
         }
         if (realtimeEvent.type === 'response.done') {
-          if (!pushToTalkActiveRef.current) {
+          const assessmentToolCall = realtimeEvent.response?.output?.find((item: RealtimeFunctionCall) => (
+            item.type === 'function_call' && item.name === 'update_assessment_scores'
+          ));
+
+          if (assessmentToolCall) {
+            const args = JSON.parse(assessmentToolCall.arguments || '{}');
+            applyAssessmentToolArgs(args);
+            completeAssessmentToolCall(assessmentToolCall.call_id, args);
+          } else if (!pushToTalkActiveRef.current) {
             setVoiceStatus('connected');
           }
         }
@@ -331,12 +355,7 @@ function App() {
           realtimeEvent.name === 'update_assessment_scores'
         ) {
           const args = JSON.parse(realtimeEvent.arguments || '{}');
-          setAssessmentData({
-            score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
-            engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
-            summary: args.summary || '',
-            tip: args.tip
-          });
+          applyAssessmentToolArgs(args);
         }
         if (realtimeEvent.type === 'error') {
           setVoiceStatus('error');
@@ -372,6 +391,45 @@ function App() {
     localStreamRef.current?.getAudioTracks().forEach(track => {
       track.enabled = enabled;
     });
+  };
+
+  const applyAssessmentToolArgs = (args: AssessmentToolArgs) => {
+    setAssessmentData({
+      score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
+      engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
+      summary: args.summary || '',
+      tip: args.tip
+    });
+  };
+
+  const completeAssessmentToolCall = (callId: string | undefined, args: AssessmentToolArgs) => {
+    const dc = dataChannelRef.current;
+    if (!callId || !dc || dc.readyState !== 'open' || completedToolCallIdsRef.current.has(callId)) return;
+    completedToolCallIdsRef.current.add(callId);
+
+    dc.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: callId,
+        output: JSON.stringify({
+          ok: true,
+          displayed_to_student: {
+            understanding_score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
+            engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
+            summary: args.summary || '',
+            tip: args.tip || ''
+          }
+        })
+      }
+    }));
+
+    dc.send(JSON.stringify({
+      type: 'response.create',
+      response: {
+        instructions: 'Briefly give supportive spoken feedback based on the latest score update, then ask exactly one next assessment question about the lesson objective.'
+      }
+    }));
   };
 
   const handlePushToTalkStart = () => {

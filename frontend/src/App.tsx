@@ -527,26 +527,24 @@ function App() {
       error: 'Needs attention'
     }[voiceStatus];
     const lessonTopicInput = activePrototypeUI?.inputs.find(input => input.id === 'lesson_code' || input.label.toLowerCase().includes('topic'));
-    const topicTitle = lessonTopicInput?.options?.find(option => option.value === inputValues[lessonTopicInput.id])?.label
+    const fullTopicTitle = lessonTopicInput?.options?.find(option => option.value === inputValues[lessonTopicInput.id])?.label
       || (lessonTopicInput ? inputValues[lessonTopicInput.id] : '')
       || 'this topic';
+    const topicTitle = fullTopicTitle.split('-')[0].trim() || fullTopicTitle;
 
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
-          <div className="act-brand">{activePrototypeUI?.title || 'Voice Assessment'}</div>
+          <div className="act-brand">Voice-Based Formative Assessment</div>
         </div>
         <main className="act-main">
           <section className="act-voice-card act-card">
-            <p className="act-voice-disclosure">You are speaking with an AI-generated voice tutor, not a human.</p>
+            <p className="act-voice-disclosure">You are speaking with an AI-generated voice tutor.</p>
             <div className="act-voice-intro">
-              <h1>Hi, I'm Sam</h1>
+              <h1>Hi, I'm ALEX.</h1>
               <p>Let's have a conversation about {topicTitle}.</p>
             </div>
             <div className={`act-voice-status-label act-voice-status-label-${voiceStatus}`}>{statusLabel}</div>
-            <p>
-              Click start, allow microphone access, and answer the tutor out loud.
-            </p>
             <div className="act-voice-controls">
               <button
                 className="act-primary-btn"

@@ -44,6 +44,21 @@ class ChatService:
         if context_parts:
             system_content += "\n\n--- BACKGROUND CONTEXT ---\n" + "\n\n".join(context_parts)
 
+        if prototype.ui.mode == "voice_assessment":
+            lesson_context = next((part for part in context_parts if part.startswith("[fetchLessonData]")), "")
+            sub_objective_model = model_to_use if not model_to_use.startswith("gpt-realtime") else "gpt-4o"
+            session.assessment_objectives = await llm_service.generate_sub_objectives(
+                lesson_context or system_content,
+                model=sub_objective_model
+            )
+            objectives_text = "\n".join(f"{index + 1}. {objective}" for index, objective in enumerate(session.assessment_objectives))
+            system_content += (
+                "\n\n--- ASSESSMENT SUB-OBJECTIVES ---\n"
+                f"{objectives_text}\n\n"
+                "Assess these objectives in order. Focus only on the current objective until the student scores at least 85 on it, "
+                "then acknowledge mastery and move to the next objective. Do not mark future objectives as mastered early."
+            )
+
         system_message = Message(
             id=str(uuid.uuid4()),
             role="system",

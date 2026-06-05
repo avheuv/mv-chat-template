@@ -40,11 +40,12 @@ type ChatSession = {
   prototype_id: string;
   user_id: string;
   messages: Message[];
+  assessment_objectives?: string[];
 };
 
 type AssessmentData = {
-  score: number;
-  engagement_score: number;
+  sub_objective_scores: number[];
+  current_sub_objective_index: number;
   summary: string;
   tip?: string;
 };
@@ -52,6 +53,8 @@ type AssessmentData = {
 type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'connected' | 'error';
 
 type AssessmentToolArgs = {
+  current_sub_objective_index?: number | string;
+  sub_objective_scores?: Array<number | string>;
   understanding_score?: number | string;
   engagement_score?: number | string;
   summary?: string;
@@ -87,6 +90,7 @@ function App() {
 
   // State for the assessment prototype specific UI
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
+  const assessmentDataRef = useRef<AssessmentData | null>(null);
   const [savingScore, setSavingScore] = useState(false);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -115,6 +119,10 @@ function App() {
   useEffect(() => {
     voiceStatusRef.current = voiceStatus;
   }, [voiceStatus]);
+
+  useEffect(() => {
+    assessmentDataRef.current = assessmentData;
+  }, [assessmentData]);
 
   useEffect(() => {
     if (view === 'chat' && composerWrapRef.current) {
@@ -258,8 +266,8 @@ function App() {
          const engagementScore = Math.min(100, totalWords);
 
          setAssessmentData({
-           score: chatResponse.structured_data.score,
-           engagement_score: engagementScore,
+           sub_objective_scores: [chatResponse.structured_data.score, engagementScore, 0],
+           current_sub_objective_index: 0,
            summary: chatResponse.structured_data.summary || '',
            tip: chatResponse.structured_data.tip
          });
@@ -299,8 +307,29 @@ function App() {
     'Start the voice assessment with a brief greeting, then ask exactly one focused first assessment question.',
     `Selected lesson topic: ${getSelectedLessonTopicTitle()}`,
     `Backend lesson context:\n${getVoiceLessonContext()}`,
-    'The first question must be specific to the selected lesson topic or learning goal. Do not ask a generic question like “tell me one thing you know about this lesson.”'
+    `Assessment sub-objectives:\n${getAssessmentObjectives().map((objective, index) => `${index + 1}. ${objective}`).join('\n')}`,
+    'Begin with sub-objective 1. The first question must be specific to sub-objective 1 and the selected lesson topic. Do not ask a generic question like “tell me one thing you know about this lesson.”'
   ].join('\n\n');
+
+  const getAssessmentObjectives = () => {
+    const objectives = session?.assessment_objectives?.filter(Boolean) || [];
+    if (objectives.length >= 3) return objectives.slice(0, 3);
+
+    return [
+      `Identify the key idea in ${getSelectedLessonTopicTitle()}.`,
+      `Explain how ${getSelectedLessonTopicTitle()} works.`,
+      `Apply ${getSelectedLessonTopicTitle()} independently.`
+    ];
+  };
+
+  const clampScore = (value: number | string | undefined) => Math.max(0, Math.min(100, Number(value) || 0));
+
+  const getAssessmentScores = () => {
+    const scores = assessmentData?.sub_objective_scores || [];
+    return [0, 1, 2].map(index => clampScore(scores[index] || 0));
+  };
+
+  const isAssessmentComplete = () => getAssessmentScores().every(score => score >= 85);
 
   const handleStartVoiceChat = async () => {
     if (!session || voiceStatus === 'connecting') return;
@@ -366,8 +395,8 @@ function App() {
 
           if (assessmentToolCall) {
             const args = JSON.parse(assessmentToolCall.arguments || '{}');
-            applyAssessmentToolArgs(args);
             completeAssessmentToolCall(assessmentToolCall.call_id, args);
+            applyAssessmentToolArgs(args);
           } else if (!pushToTalkActiveRef.current) {
             setVoiceStatus('connected');
           }
@@ -376,8 +405,8 @@ function App() {
           realtimeEvent.type === 'response.function_call_arguments.done' &&
           realtimeEvent.name === 'update_assessment_scores'
         ) {
-          const args = JSON.parse(realtimeEvent.arguments || '{}');
-          applyAssessmentToolArgs(args);
+          // Wait for response.done before completing the tool call so we can
+          // update the UI and trigger exactly one verbal follow-up.
         }
         if (realtimeEvent.type === 'error') {
           setVoiceStatus('error');
@@ -415,19 +444,39 @@ function App() {
     });
   };
 
-  const applyAssessmentToolArgs = (args: AssessmentToolArgs) => {
-    setAssessmentData({
-      score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
-      engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
-      summary: args.summary || '',
+  const buildAssessmentDataFromToolArgs = (args: AssessmentToolArgs): AssessmentData => {
+    const previousScores = assessmentDataRef.current?.sub_objective_scores || [0, 0, 0];
+    const scores = args.sub_objective_scores?.length
+      ? [0, 1, 2].map(index => clampScore(args.sub_objective_scores?.[index]))
+      : [clampScore(args.understanding_score), clampScore(previousScores[1]), clampScore(previousScores[2])];
+    const firstIncompleteIndex = scores.findIndex(score => score < 85);
+
+    return {
+      sub_objective_scores: scores,
+      current_sub_objective_index: firstIncompleteIndex === -1 ? 2 : firstIncompleteIndex,
+      summary: args.summary || assessmentDataRef.current?.summary || '',
       tip: args.tip
-    });
+    };
+  };
+
+  const applyAssessmentToolArgs = (args: AssessmentToolArgs) => {
+    const nextAssessmentData = buildAssessmentDataFromToolArgs(args);
+    assessmentDataRef.current = nextAssessmentData;
+    setAssessmentData(nextAssessmentData);
   };
 
   const completeAssessmentToolCall = (callId: string | undefined, args: AssessmentToolArgs) => {
     const dc = dataChannelRef.current;
     if (!callId || !dc || dc.readyState !== 'open' || completedToolCallIdsRef.current.has(callId)) return;
     completedToolCallIdsRef.current.add(callId);
+
+    const previousScores = assessmentDataRef.current?.sub_objective_scores || [0, 0, 0];
+    const nextAssessmentData = buildAssessmentDataFromToolArgs(args);
+    const objectives = getAssessmentObjectives();
+    const scores = nextAssessmentData.sub_objective_scores;
+    const completedIndex = scores.findIndex((score, index) => score >= 85 && (previousScores[index] || 0) < 85);
+    const nextIncompleteIndex = scores.findIndex(score => score < 85);
+    const allComplete = nextIncompleteIndex === -1;
 
     dc.send(JSON.stringify({
       type: 'conversation.item.create',
@@ -437,19 +486,26 @@ function App() {
         output: JSON.stringify({
           ok: true,
           displayed_to_student: {
-            understanding_score: Math.max(0, Math.min(100, Number(args.understanding_score) || 0)),
-            engagement_score: Math.max(0, Math.min(100, Number(args.engagement_score) || 0)),
-            summary: args.summary || '',
-            tip: args.tip || ''
+            current_sub_objective_index: nextAssessmentData.current_sub_objective_index,
+            sub_objective_scores: scores,
+            summary: nextAssessmentData.summary,
+            tip: nextAssessmentData.tip || '',
+            submit_enabled: allComplete
           }
         })
       }
     }));
 
+    const transitionInstruction = allComplete
+      ? 'All three sub-objectives are mastered. Briefly congratulate the student and tell them they can submit the assessment now.'
+      : completedIndex !== -1
+        ? `Acknowledge that the student met sub-objective ${completedIndex + 1}: "${objectives[completedIndex]}". Then transition to sub-objective ${nextIncompleteIndex + 1}: "${objectives[nextIncompleteIndex]}" and ask one focused question about it.`
+        : `Give brief supportive feedback and ask one focused follow-up question about current sub-objective ${nextIncompleteIndex + 1}: "${objectives[nextIncompleteIndex]}".`;
+
     dc.send(JSON.stringify({
       type: 'response.create',
       response: {
-        instructions: 'Briefly give supportive spoken feedback based on the latest score update, then ask exactly one next assessment question about the lesson objective.'
+        instructions: transitionInstruction
       }
     }));
   };
@@ -475,22 +531,28 @@ function App() {
   };
 
   const handleSaveScore = async () => {
-    if (!session || !assessmentData || savingScore) return;
+    if (!session || !assessmentData || savingScore || !isAssessmentComplete()) return;
     setSavingScore(true);
     try {
+      const scores = getAssessmentScores();
+      const subObjectives = getAssessmentObjectives().map((objective, index) => ({
+        objective,
+        score: scores[index],
+        mastered: scores[index] >= 85
+      }));
       const res = await fetch(`${API_BASE}/chat/save-score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: inputValues['user_id'] || 'unknown',
           lesson_topic: inputValues['lesson_code'] || 'unknown',
-          score: assessmentData.score,
-          engagement_score: assessmentData.engagement_score,
-          summary: assessmentData.summary
+          score: Math.round(scores.reduce((total, score) => total + score, 0) / scores.length),
+          summary: assessmentData.summary || 'The student met all three formative assessment sub-objectives.',
+          sub_objectives: subObjectives
         })
       });
       if (!res.ok) throw new Error('Failed to save score');
-      alert('Score saved successfully!');
+      alert('Assessment submitted successfully!');
     } catch (e: unknown) {
       alert(`Error saving score: ${getErrorMessage(e)}`);
     } finally {
@@ -660,30 +722,37 @@ function App() {
 
           <section className="act-score-dock act-card">
             <div className="act-score-header">
-              <span>Assessment Scores</span>
-              <button
-                className="act-save-score-btn"
-                onClick={handleSaveScore}
-                disabled={!assessmentData || savingScore}
-              >
-                {savingScore ? 'Saving...' : 'Save Score'}
-              </button>
+              <span>Assessment Steps</span>
             </div>
-            <div className="act-score-row">
-              <span>Engagement</span>
-              <div className="act-score-track">
-                <div className="act-score-fill act-score-fill-engagement" style={{ width: `${assessmentData?.engagement_score || 0}%` }} />
-              </div>
-              <strong>{assessmentData?.engagement_score ?? '--'}/100</strong>
-            </div>
-            <div className="act-score-row">
-              <span>Understanding</span>
-              <div className="act-score-track">
-                <div className="act-score-fill act-score-fill-understanding" style={{ width: `${assessmentData?.score || 0}%` }} />
-              </div>
-              <strong>{assessmentData?.score ?? '--'}/100</strong>
+            <div className="act-objective-list">
+              {getAssessmentObjectives().map((objective, index) => {
+                const score = getAssessmentScores()[index];
+                const mastered = score >= 85;
+
+                return (
+                  <div className="act-objective-score" key={`${objective}-${index}`}>
+                    <p className="act-objective-text">{objective}</p>
+                    <div className="act-objective-score-row">
+                      <div className="act-score-track act-score-track-objective" aria-label={`${objective} score`}>
+                        <div className="act-score-fill act-score-fill-objective" style={{ width: `${score}%` }} />
+                      </div>
+                      <strong>{score}/100</strong>
+                      <span className={`act-objective-check ${mastered ? 'act-objective-check-complete' : ''}`} aria-label={mastered ? 'Mastered' : 'Not yet mastered'}>
+                        ✓
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             {assessmentData?.tip && <p className="act-score-tip"><strong>Tip:</strong> {assessmentData.tip}</p>}
+            <button
+              className="act-submit-assessment-btn"
+              onClick={handleSaveScore}
+              disabled={!isAssessmentComplete() || savingScore}
+            >
+              {savingScore ? 'Submitting...' : 'Submit'}
+            </button>
           </section>
         </main>
       </div>
@@ -791,14 +860,14 @@ function App() {
                     overflow: 'hidden'
                   }}>
                     <div style={{
-                      width: `${assessmentData.engagement_score}%`,
+                      width: `${assessmentData.sub_objective_scores[1]}%`,
                       height: '100%',
                       backgroundColor: '#DC2626', // Red
                       transition: 'width 0.3s ease'
                     }}></div>
                   </div>
                   <span style={{ width: '45px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold', color: '#DC2626' }}>
-                    {assessmentData.engagement_score}/100
+                    {assessmentData.sub_objective_scores[1]}/100
                   </span>
                 </div>
 
@@ -813,14 +882,14 @@ function App() {
                     overflow: 'hidden'
                   }}>
                     <div style={{
-                      width: `${assessmentData.score}%`,
+                      width: `${assessmentData.sub_objective_scores[0]}%`,
                       height: '100%',
                       backgroundColor: '#1E3A8A', // Blue
                       transition: 'width 0.3s ease'
                     }}></div>
                   </div>
                   <span style={{ width: '45px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold', color: '#1E3A8A' }}>
-                    {assessmentData.score}/100
+                    {assessmentData.sub_objective_scores[0]}/100
                   </span>
                 </div>
 

@@ -364,17 +364,6 @@ body {
   text-align: center;
 }
 
-.act-voice-disclosure {
-  display: inline-flex;
-  margin: 0 0 22px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #3730a3;
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .act-voice-intro {
   margin: 0 auto 22px;
 }
@@ -415,13 +404,6 @@ body {
 
 .act-voice-status-label-speaking {
   color: #7e22ce;
-}
-
-.act-voice-card > p:not(.act-voice-disclosure) {
-  max-width: 560px;
-  margin: 0 auto 22px;
-  color: var(--muted);
-  line-height: 1.55;
 }
 
 .act-voice-controls {
@@ -504,10 +486,85 @@ body {
   background: #1e3a8a;
 }
 
-.act-score-tip {
-  margin: 14px 0 0;
+.act-objective-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.act-objective-score {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.act-objective-text {
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.4;
+}
+
+.act-objective-score-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.act-objective-score-row strong {
+  width: 64px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: right;
+}
+
+.act-score-track-objective {
+  background: #e5e7eb;
+}
+
+.act-score-fill-objective {
+  background: #16a34a;
+}
+
+.act-objective-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #cbd5e1;
+  border-radius: 999px;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.act-objective-check-complete {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: white;
+}
+
+.act-submit-assessment-btn {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 999px;
+  background: #16a34a;
+  color: white;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.act-submit-assessment-btn:disabled {
+  background: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
 }
 
 .act-objective-list {

@@ -293,7 +293,8 @@ function App() {
       || (lessonTopicInput ? inputValues[lessonTopicInput.id] : '')
       || 'this topic';
 
-    return fullTopicTitle.split('-')[0].trim() || fullTopicTitle;
+    const [, ...topicDetails] = fullTopicTitle.split('-');
+    return topicDetails.join('-').trim() || fullTopicTitle.trim();
   };
 
   const getVoiceLessonContext = () => {
@@ -677,7 +678,6 @@ function App() {
         </div>
         <main className="act-main">
           <section className="act-voice-card act-card">
-            <p className="act-voice-disclosure">You are speaking with an AI-generated voice tutor.</p>
             <div className="act-voice-intro">
               <h1>Hi, I'm ALEX.</h1>
               <p>Let's have a conversation about {topicTitle}.</p>
@@ -745,7 +745,6 @@ function App() {
                 );
               })}
             </div>
-            {assessmentData?.tip && <p className="act-score-tip"><strong>Tip:</strong> {assessmentData.tip}</p>}
             <button
               className="act-submit-assessment-btn"
               onClick={handleSaveScore}

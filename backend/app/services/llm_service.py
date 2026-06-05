@@ -77,4 +77,52 @@ class LLMService:
             print(f"Error calling LLM: {e}")
             raise
 
+    async def generate_sub_objectives(
+        self,
+        lesson_context: str,
+        model: str = "gpt-4o",
+    ) -> List[str]:
+        """Break a lesson goal into three short, sequenced assessment steps."""
+        fallback_objectives = [
+            "Identify the key idea in the lesson goal.",
+            "Explain how the key idea works in a simple example.",
+            "Apply the key idea independently to show understanding."
+        ]
+
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You break a lesson learning objective into exactly three short, concrete, "
+                            "sequenced sub-objectives for a formative assessment. Return only JSON "
+                            "with this shape: {\"sub_objectives\": [\"...\", \"...\", \"...\"]}."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "Create exactly three student-facing sub-objectives that build toward this lesson goal. "
+                            "Each should be 12 words or fewer and should be assessable in conversation.\n\n"
+                            f"{lesson_context}"
+                        )
+                    }
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.2,
+                max_tokens=300
+            )
+            raw_content = response.choices[0].message.content or "{}"
+            data = json.loads(raw_content)
+            objectives = data.get("sub_objectives") or data.get("objectives") or []
+            clean_objectives = [str(item).strip() for item in objectives if str(item).strip()]
+            if len(clean_objectives) >= 3:
+                return clean_objectives[:3]
+        except Exception as e:
+            print(f"Warning: Failed to generate assessment sub-objectives: {e}")
+
+        return fallback_objectives
+
 llm_service = LLMService()

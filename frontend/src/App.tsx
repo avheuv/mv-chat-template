@@ -279,6 +279,28 @@ function App() {
   const activePrototypeUI = activePrototype?.ui;
   const isVoiceAssessment = activePrototypeUI?.mode === 'voice_assessment';
 
+  const getSelectedLessonTopicTitle = () => {
+    const lessonTopicInput = activePrototypeUI?.inputs.find(input => input.id === 'lesson_code' || input.label.toLowerCase().includes('topic'));
+    const fullTopicTitle = lessonTopicInput?.options?.find(option => option.value === inputValues[lessonTopicInput.id])?.label
+      || (lessonTopicInput ? inputValues[lessonTopicInput.id] : '')
+      || 'this topic';
+
+    return fullTopicTitle.split('-')[0].trim() || fullTopicTitle;
+  };
+
+  const getVoiceLessonContext = () => {
+    const systemContent = session?.messages.find(message => message.role === 'system')?.content || '';
+    const lessonContextMatch = systemContent.match(/(?:^|\n)\[fetchLessonData\]\n([\s\S]*?)(?=\n\n\[|$)/);
+
+    return lessonContextMatch?.[1]?.trim() || `LESSON DATA:\nTopic: ${getSelectedLessonTopicTitle()}`;
+  };
+
+  const buildInitialVoiceInstructions = () => [
+    'Start the voice assessment with a brief greeting, then ask exactly one focused first assessment question.',
+    `Selected lesson topic: ${getSelectedLessonTopicTitle()}`,
+    `Backend lesson context:\n${getVoiceLessonContext()}`,
+    'The first question must be specific to the selected lesson topic or learning goal. Do not ask a generic question like “tell me one thing you know about this lesson.”'
+  ].join('\n\n');
 
   const handleStartVoiceChat = async () => {
     if (!session || voiceStatus === 'connecting') return;
@@ -326,7 +348,7 @@ function App() {
         dc.send(JSON.stringify({
           type: 'response.create',
           response: {
-            instructions: 'Greet the student briefly and ask the first assessment question about the lesson objective.'
+            instructions: buildInitialVoiceInstructions()
           }
         }));
       });
@@ -584,11 +606,7 @@ function App() {
       connected: 'Waiting',
       error: 'Needs attention'
     }[voiceStatus];
-    const lessonTopicInput = activePrototypeUI?.inputs.find(input => input.id === 'lesson_code' || input.label.toLowerCase().includes('topic'));
-    const fullTopicTitle = lessonTopicInput?.options?.find(option => option.value === inputValues[lessonTopicInput.id])?.label
-      || (lessonTopicInput ? inputValues[lessonTopicInput.id] : '')
-      || 'this topic';
-    const topicTitle = fullTopicTitle.split('-')[0].trim() || fullTopicTitle;
+    const topicTitle = getSelectedLessonTopicTitle();
 
     return (
       <div className="act-app-shell">

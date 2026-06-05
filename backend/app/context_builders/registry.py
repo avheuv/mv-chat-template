@@ -76,7 +76,7 @@ async def fetch_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
             return f"LESSON DATA:\nTopic: {title}\nGoal: {objectives}"
 
     # Fallback if Firestore is not available
-    return demo_lesson_data(inputs, session_id)
+    return await demo_lesson_data(inputs, session_id)
 
 # Register them
 registry.register("demoUserProfile", demo_user_profile)

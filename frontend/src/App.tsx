@@ -24,7 +24,7 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
-    mode?: 'chat' | 'voice_assessment' | 'sketch';
+    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory';
     inputs: UIInputConfig[];
   }
 };
@@ -51,6 +51,25 @@ type AssessmentData = {
 };
 
 type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'connected' | 'error';
+
+type CourseLesson = {
+  lesson_id: string;
+  lesson_title: string;
+  learning_objective: { objective_id: string; objective_text: string };
+  activation: { activation_id: string; activation_text: string };
+};
+
+type CourseUnit = {
+  unit_id: string;
+  unit_title: string;
+  unit_description: string;
+  lessons: CourseLesson[];
+};
+
+type CourseOutline = {
+  subject: string;
+  units: CourseUnit[];
+};
 
 type PenColor = 'black' | 'red' | 'green' | 'blue' | 'erase';
 
@@ -86,6 +105,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [inputValue, setInputValue] = useState('');
+  const [courseLogs, setCourseLogs] = useState<string[]>([]);
+  const [courseResult, setCourseResult] = useState<CourseOutline | null>(null);
+  const [expandedCourseUnits, setExpandedCourseUnits] = useState<Set<string>>(new Set());
+  const [expandedCourseLessons, setExpandedCourseLessons] = useState<Set<string>>(new Set());
 
   // Ref for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -293,6 +316,7 @@ function App() {
   const activePrototypeUI = activePrototype?.ui;
   const isVoiceAssessment = activePrototypeUI?.mode === 'voice_assessment';
   const isSketch = activePrototypeUI?.mode === 'sketch';
+  const isCourseFactory = activePrototypeUI?.mode === 'course_factory';
 
 
   useEffect(() => {
@@ -690,6 +714,108 @@ ${getSketchCoachingFocus()}`
     }
   };
 
+
+  const downloadTextFile = (filename: string, content: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const courseToCsv = (course: CourseOutline) => {
+    const rows = [['subject', 'unit_id', 'unit_title', 'lesson_id', 'lesson_title', 'objective_id', 'objective_text', 'activation_id', 'activation_text']];
+    course.units.forEach(unit => {
+      unit.lessons.forEach(lesson => {
+        rows.push([
+          course.subject,
+          unit.unit_id,
+          unit.unit_title,
+          lesson.lesson_id,
+          lesson.lesson_title,
+          lesson.learning_objective.objective_id,
+          lesson.learning_objective.objective_text,
+          lesson.activation.activation_id,
+          lesson.activation.activation_text
+        ]);
+      });
+    });
+    return rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+  };
+
+  const handleGenerateCourse = () => {
+    const subject = inputValues.subject?.trim();
+    if (!subject) {
+      setError('Please enter a course subject.');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+    setCourseResult(null);
+    setCourseLogs([]);
+
+    const events = new EventSource(`${API_BASE}/course-factory/stream?subject=${encodeURIComponent(subject)}`);
+    events.addEventListener('log', event => {
+      const payload = JSON.parse((event as MessageEvent).data);
+      setCourseLogs(previous => [...previous, payload.message]);
+    });
+    events.addEventListener('complete', event => {
+      const payload = JSON.parse((event as MessageEvent).data);
+      setCourseResult(payload.course);
+      setExpandedCourseUnits(new Set([payload.course.units?.[0]?.unit_id].filter(Boolean)));
+      setExpandedCourseLessons(new Set());
+      setLoading(false);
+      events.close();
+    });
+    events.addEventListener('error', event => {
+      if ((event as MessageEvent).data) {
+        const payload = JSON.parse((event as MessageEvent).data);
+        setError(payload.message || 'Course generation failed.');
+      } else {
+        setError('Course generation failed.');
+      }
+      setLoading(false);
+      events.close();
+    });
+  };
+
+  const handleGenerateAnotherCourse = () => {
+    setCourseLogs([]);
+    setCourseResult(null);
+    setExpandedCourseUnits(new Set());
+    setExpandedCourseLessons(new Set());
+    setError('');
+  };
+
+
+
+  const toggleCourseUnit = (unitId: string) => {
+    setExpandedCourseUnits(previous => {
+      const next = new Set(previous);
+      if (next.has(unitId)) {
+        next.delete(unitId);
+      } else {
+        next.add(unitId);
+      }
+      return next;
+    });
+  };
+
+  const toggleCourseLesson = (lessonId: string) => {
+    setExpandedCourseLessons(previous => {
+      const next = new Set(previous);
+      if (next.has(lessonId)) {
+        next.delete(lessonId);
+      } else {
+        next.add(lessonId);
+      }
+      return next;
+    });
+  };
+
   if (view === 'landing') {
     return (
       <div className="act-app-shell">
@@ -721,6 +847,127 @@ ${getSketchCoachingFocus()}`
               Open
             </button>
           </section>
+        </main>
+      </div>
+    );
+  }
+
+
+  if (view === 'splash' && activePrototypeUI && isCourseFactory) {
+    return (
+      <div className="act-app-shell">
+        <div className="act-app-header">
+          <div className="act-brand">Course Factory</div>
+        </div>
+        <main className="act-main">
+          {!courseResult && (
+            <section className="act-welcome-card act-course-card">
+              <h1>Course Factory</h1>
+              <p>Let's make a course about ...</p>
+              <div className="act-form-row">
+                <label>Course subject</label>
+                <input
+                  type="text"
+                  placeholder={activePrototypeUI.placeholder || 'Introductory Astronomy'}
+                  value={inputValues.subject || ''}
+                  onChange={e => updateInputValue('subject', e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleGenerateCourse();
+                  }}
+                />
+              </div>
+              {error && <div className="act-error-message">{error}</div>}
+              <button className="act-primary-btn" onClick={handleGenerateCourse} disabled={loading}>
+                {loading ? 'Generating...' : 'Generate Course'}
+              </button>
+            </section>
+          )}
+
+          {loading && courseLogs.length > 0 && !courseResult && (
+            <section className="act-card act-course-log" aria-live="polite">
+              <h2>Process Log</h2>
+              <ol>
+                {courseLogs.map((log, index) => <li key={`${log}-${index}`}>{log}</li>)}
+                {loading && <li className="act-log-active">Agents are working...</li>}
+              </ol>
+            </section>
+          )}
+
+          {courseResult && (
+            <section className="act-card act-course-results">
+              <div className="act-course-results-header">
+                <p className="act-eyebrow">Completed Course Outline</p>
+                <h1>{courseResult.subject}</h1>
+                <p className="act-course-results-subtitle">Eight sequenced units with lesson-level objectives and activations.</p>
+              </div>
+
+              <div className="act-course-accordion">
+                {courseResult.units.map((unit, unitIndex) => {
+                  const unitOpen = expandedCourseUnits.has(unit.unit_id);
+
+                  return (
+                    <article key={unit.unit_id} className={`act-unit-panel ${unitOpen ? 'act-panel-open' : ''}`}>
+                      <button
+                        className="act-unit-toggle"
+                        onClick={() => toggleCourseUnit(unit.unit_id)}
+                        aria-expanded={unitOpen}
+                        type="button"
+                      >
+                        <span className="act-unit-kicker">Unit {unitIndex + 1}</span>
+                        <span className="act-unit-title">{unit.unit_title}</span>
+                        <span className="act-panel-icon" aria-hidden="true">{unitOpen ? '−' : '+'}</span>
+                      </button>
+
+                      {unitOpen && (
+                        <div className="act-unit-body">
+                          {unit.unit_description && <p className="act-unit-description">{unit.unit_description}</p>}
+                          <div className="act-lesson-list">
+                            {unit.lessons.map((lesson, lessonIndex) => {
+                              const lessonOpen = expandedCourseLessons.has(lesson.lesson_id);
+
+                              return (
+                                <div key={lesson.lesson_id} className={`act-lesson-panel ${lessonOpen ? 'act-panel-open' : ''}`}>
+                                  <button
+                                    className="act-lesson-toggle"
+                                    onClick={() => toggleCourseLesson(lesson.lesson_id)}
+                                    aria-expanded={lessonOpen}
+                                    type="button"
+                                  >
+                                    <span className="act-lesson-number">Lesson {lessonIndex + 1}</span>
+                                    <span className="act-lesson-title">{lesson.lesson_title}</span>
+                                    <span className="act-panel-icon" aria-hidden="true">{lessonOpen ? '−' : '+'}</span>
+                                  </button>
+
+                                  {lessonOpen && (
+                                    <div className="act-lesson-content">
+                                      <div className="act-content-block">
+                                        <h3>Learning Objective</h3>
+                                        <p>{lesson.learning_objective.objective_text}</p>
+                                      </div>
+                                      <div className="act-content-block act-activation-block">
+                                        <h3>Activation</h3>
+                                        <p>{lesson.activation.activation_text}</p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="act-course-actions">
+                <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.json`, JSON.stringify(courseResult, null, 2), 'application/json')}>Download JSON</button>
+                <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.csv`, courseToCsv(courseResult), 'text/csv')}>Download CSV</button>
+                <button className="act-primary-btn" onClick={handleGenerateAnotherCourse}>Generate Another Course</button>
+              </div>
+            </section>
+          )}
         </main>
       </div>
     );

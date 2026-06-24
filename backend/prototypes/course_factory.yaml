@@ -1,0 +1,19 @@
+id: course_factory
+name: Course Factory
+description: Generates a complete course outline with a code-orchestrated multi-agent workflow.
+systemPrompt: |
+  Course Factory uses a code-orchestrated sequence of specialized agents to build a structured course outline from one subject.
+model: gpt-5.4-mini
+temperature: 0.2
+maxTokens: 4000
+ui:
+  title: Course Factory
+  subtitle: "Let's make a course about ..."
+  placeholder: Introductory Astronomy
+  readonly: true
+  mode: course_factory
+  inputs:
+    - id: subject
+      label: "Let's make a course about ..."
+      type: text
+      placeholder: Introductory Astronomy

@@ -107,6 +107,8 @@ function App() {
   const [inputValue, setInputValue] = useState('');
   const [courseLogs, setCourseLogs] = useState<string[]>([]);
   const [courseResult, setCourseResult] = useState<CourseOutline | null>(null);
+  const [expandedCourseUnits, setExpandedCourseUnits] = useState<Set<string>>(new Set());
+  const [expandedCourseLessons, setExpandedCourseLessons] = useState<Set<string>>(new Set());
 
   // Ref for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -762,8 +764,9 @@ ${getSketchCoachingFocus()}`
     });
     events.addEventListener('complete', event => {
       const payload = JSON.parse((event as MessageEvent).data);
-      setCourseLogs(previous => [...previous, payload.message]);
       setCourseResult(payload.course);
+      setExpandedCourseUnits(new Set([payload.course.units?.[0]?.unit_id].filter(Boolean)));
+      setExpandedCourseLessons(new Set());
       setLoading(false);
       events.close();
     });
@@ -782,7 +785,35 @@ ${getSketchCoachingFocus()}`
   const handleGenerateAnotherCourse = () => {
     setCourseLogs([]);
     setCourseResult(null);
+    setExpandedCourseUnits(new Set());
+    setExpandedCourseLessons(new Set());
     setError('');
+  };
+
+
+
+  const toggleCourseUnit = (unitId: string) => {
+    setExpandedCourseUnits(previous => {
+      const next = new Set(previous);
+      if (next.has(unitId)) {
+        next.delete(unitId);
+      } else {
+        next.add(unitId);
+      }
+      return next;
+    });
+  };
+
+  const toggleCourseLesson = (lessonId: string) => {
+    setExpandedCourseLessons(previous => {
+      const next = new Set(previous);
+      if (next.has(lessonId)) {
+        next.delete(lessonId);
+      } else {
+        next.add(lessonId);
+      }
+      return next;
+    });
   };
 
   if (view === 'landing') {
@@ -852,7 +883,7 @@ ${getSketchCoachingFocus()}`
             </section>
           )}
 
-          {(loading || courseLogs.length > 0) && (
+          {loading && courseLogs.length > 0 && !courseResult && (
             <section className="act-card act-course-log" aria-live="polite">
               <h2>Process Log</h2>
               <ol>
@@ -865,35 +896,75 @@ ${getSketchCoachingFocus()}`
           {courseResult && (
             <section className="act-card act-course-results">
               <div className="act-course-results-header">
-                <div>
-                  <p className="act-eyebrow">Completed Course Outline</p>
-                  <h1>{courseResult.subject}</h1>
-                </div>
-                <div className="act-course-actions">
-                  <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.json`, JSON.stringify(courseResult, null, 2), 'application/json')}>Download JSON</button>
-                  <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.csv`, courseToCsv(courseResult), 'text/csv')}>Download CSV</button>
-                  <button className="act-primary-btn" onClick={handleGenerateAnotherCourse}>Generate Another Course</button>
-                </div>
+                <p className="act-eyebrow">Completed Course Outline</p>
+                <h1>{courseResult.subject}</h1>
+                <p className="act-course-results-subtitle">Eight sequenced units with lesson-level objectives and activations.</p>
               </div>
 
               <div className="act-course-accordion">
-                {courseResult.units.map((unit, unitIndex) => (
-                  <details key={unit.unit_id} className="act-unit-detail">
-                    <summary>Unit {unitIndex + 1}: {unit.unit_title}</summary>
-                    {unit.unit_description && <p className="act-unit-description">{unit.unit_description}</p>}
-                    {unit.lessons.map((lesson, lessonIndex) => (
-                      <details key={lesson.lesson_id} className="act-lesson-detail">
-                        <summary>Lesson {lessonIndex + 1}: {lesson.lesson_title}</summary>
-                        <div className="act-lesson-content">
-                          <h3>Learning Objective</h3>
-                          <p>{lesson.learning_objective.objective_text}</p>
-                          <h3>Activation</h3>
-                          <p>{lesson.activation.activation_text}</p>
+                {courseResult.units.map((unit, unitIndex) => {
+                  const unitOpen = expandedCourseUnits.has(unit.unit_id);
+
+                  return (
+                    <article key={unit.unit_id} className={`act-unit-panel ${unitOpen ? 'act-panel-open' : ''}`}>
+                      <button
+                        className="act-unit-toggle"
+                        onClick={() => toggleCourseUnit(unit.unit_id)}
+                        aria-expanded={unitOpen}
+                        type="button"
+                      >
+                        <span className="act-unit-kicker">Unit {unitIndex + 1}</span>
+                        <span className="act-unit-title">{unit.unit_title}</span>
+                        <span className="act-panel-icon" aria-hidden="true">{unitOpen ? '−' : '+'}</span>
+                      </button>
+
+                      {unitOpen && (
+                        <div className="act-unit-body">
+                          {unit.unit_description && <p className="act-unit-description">{unit.unit_description}</p>}
+                          <div className="act-lesson-list">
+                            {unit.lessons.map((lesson, lessonIndex) => {
+                              const lessonOpen = expandedCourseLessons.has(lesson.lesson_id);
+
+                              return (
+                                <div key={lesson.lesson_id} className={`act-lesson-panel ${lessonOpen ? 'act-panel-open' : ''}`}>
+                                  <button
+                                    className="act-lesson-toggle"
+                                    onClick={() => toggleCourseLesson(lesson.lesson_id)}
+                                    aria-expanded={lessonOpen}
+                                    type="button"
+                                  >
+                                    <span className="act-lesson-number">Lesson {lessonIndex + 1}</span>
+                                    <span className="act-lesson-title">{lesson.lesson_title}</span>
+                                    <span className="act-panel-icon" aria-hidden="true">{lessonOpen ? '−' : '+'}</span>
+                                  </button>
+
+                                  {lessonOpen && (
+                                    <div className="act-lesson-content">
+                                      <div className="act-content-block">
+                                        <h3>Learning Objective</h3>
+                                        <p>{lesson.learning_objective.objective_text}</p>
+                                      </div>
+                                      <div className="act-content-block act-activation-block">
+                                        <h3>Activation</h3>
+                                        <p>{lesson.activation.activation_text}</p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </details>
-                    ))}
-                  </details>
-                ))}
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="act-course-actions">
+                <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.json`, JSON.stringify(courseResult, null, 2), 'application/json')}>Download JSON</button>
+                <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.csv`, courseToCsv(courseResult), 'text/csv')}>Download CSV</button>
+                <button className="act-primary-btn" onClick={handleGenerateAnotherCourse}>Generate Another Course</button>
               </div>
             </section>
           )}

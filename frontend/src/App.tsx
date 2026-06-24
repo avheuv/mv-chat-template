@@ -24,7 +24,7 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
-    mode?: 'chat' | 'voice_assessment';
+    mode?: 'chat' | 'voice_assessment' | 'sketch';
     inputs: UIInputConfig[];
   }
 };
@@ -51,6 +51,8 @@ type AssessmentData = {
 };
 
 type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'connected' | 'error';
+
+type PenColor = 'black' | 'red' | 'green' | 'blue' | 'erase';
 
 type AssessmentToolArgs = {
   current_sub_objective_index?: number | string;
@@ -102,6 +104,10 @@ function App() {
   const [voiceActive, setVoiceActive] = useState(false);
   const pushToTalkActiveRef = useRef(false);
   const completedToolCallIdsRef = useRef<Set<string>>(new Set());
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingRef = useRef(false);
+  const [penColor, setPenColor] = useState<PenColor>('black');
 
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(120);
@@ -286,6 +292,18 @@ function App() {
   const activePrototype = prototypes.find(p => p.id === selectedPrototypeId);
   const activePrototypeUI = activePrototype?.ui;
   const isVoiceAssessment = activePrototypeUI?.mode === 'voice_assessment';
+  const isSketch = activePrototypeUI?.mode === 'sketch';
+
+
+  useEffect(() => {
+    if (view !== 'chat' || !isSketch || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }, [view, isSketch]);
 
   const getSelectedLessonTopicTitle = () => {
     const lessonTopicInput = activePrototypeUI?.inputs.find(input => input.id === 'lesson_code' || input.label.toLowerCase().includes('topic'));
@@ -297,6 +315,13 @@ function App() {
     return topicDetails.join('-').trim() || fullTopicTitle.trim();
   };
 
+  const getSketchQuestion = () => {
+    const questionInput = activePrototypeUI?.inputs.find(input => input.id === 'question');
+    return questionInput?.options?.find(option => option.value === inputValues[questionInput.id])?.label
+      || (questionInput ? inputValues[questionInput.id] : '')
+      || 'Why do the seasons occur on Earth?';
+  };
+
   const getVoiceLessonContext = () => {
     const systemContent = session?.messages.find(message => message.role === 'system')?.content || '';
     const lessonContextMatch = systemContent.match(/(?:^|\n)\[fetchLessonData\]\n([\s\S]*?)(?=\n\n\[|$)/);
@@ -304,13 +329,27 @@ function App() {
     return lessonContextMatch?.[1]?.trim() || `LESSON DATA:\nTopic: ${getSelectedLessonTopicTitle()}`;
   };
 
-  const buildInitialVoiceInstructions = () => [
+  const buildInitialVoiceInstructions = () => {
+    if (isSketch) {
+      return [
+        'You are SKETCH, a realtime drawing coach for a high school science student.',
+        `Question: ${getSketchQuestion()}`,
+        'The student will draw on a whiteboard and explain their thinking aloud. Use both the latest canvas image and the spoken explanation.',
+        'Your goal is to help the student make an accurate, realistic drawing and explanation for a high school level.',
+        'Do not score the student. Do not save anything. Do not give the answer or tell the student exactly what to draw.',
+        'Respond only with one short coaching question, probing question, or hint. Keep it warm and concise.',
+        'Focus on scientific accuracy: Earth’s axial tilt, sunlight angle, day length, orbit position, and common misconceptions such as distance from the Sun.'
+      ].join('\n\n');
+    }
+
+    return [
     'Start the voice assessment with a brief greeting, then ask exactly one focused first assessment question.',
     `Selected lesson topic: ${getSelectedLessonTopicTitle()}`,
     `Backend lesson context:\n${getVoiceLessonContext()}`,
     `Assessment sub-objectives:\n${getAssessmentObjectives().map((objective, index) => `${index + 1}. ${objective}`).join('\n')}`,
     'Begin with sub-objective 1. The first question must be specific to sub-objective 1 and the selected lesson topic. Do not ask a generic question like “tell me one thing you know about this lesson.”'
-  ].join('\n\n');
+    ].join('\n\n');
+  };
 
   const getAssessmentObjectives = () => {
     const objectives = session?.assessment_objectives?.filter(Boolean) || [];
@@ -511,8 +550,76 @@ function App() {
     }));
   };
 
+  const sendSketchCanvasSnapshot = () => {
+    if (!isSketch || !canvasRef.current || !dataChannelRef.current || dataChannelRef.current.readyState !== 'open') return;
+
+    dataChannelRef.current.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: `Here is my current drawing for: ${getSketchQuestion()}`
+          },
+          {
+            type: 'input_image',
+            image_url: canvasRef.current.toDataURL('image/png')
+          }
+        ]
+      }
+    }));
+  };
+
+  const handlePointerDownCanvas = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    isDrawingRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    context.beginPath();
+    context.moveTo(x, y);
+  };
+
+  const handlePointerMoveCanvas = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    context.strokeStyle = penColor === 'erase' ? '#ffffff' : penColor;
+    context.lineWidth = penColor === 'erase' ? 28 : 5;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.lineTo(x, y);
+    context.stroke();
+  };
+
+  const handlePointerUpCanvas = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    isDrawingRef.current = false;
+    canvasRef.current?.releasePointerCapture(event.pointerId);
+  };
+
+  const handleClearCanvas = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  };
+
   const handlePushToTalkStart = () => {
     if (!voiceActive || voiceStatus === 'connecting' || voiceStatus === 'error') return;
+    sendSketchCanvasSnapshot();
     pushToTalkActiveRef.current = true;
     setLocalMicrophoneEnabled(true);
     setVoiceStatus('listening');
@@ -660,7 +767,7 @@ function App() {
       .replace(/\\\)/g, '$');
   };
 
-  if (isVoiceAssessment) {
+  if (isVoiceAssessment || isSketch) {
     const statusLabel = {
       idle: 'Disconnected',
       connecting: 'Connecting',
@@ -669,18 +776,18 @@ function App() {
       connected: 'Waiting',
       error: 'Needs attention'
     }[voiceStatus];
-    const topicTitle = getSelectedLessonTopicTitle();
+    const topicTitle = isSketch ? getSketchQuestion() : getSelectedLessonTopicTitle();
 
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
-          <div className="act-brand">Voice-Based Formative Assessment</div>
+          <div className="act-brand">{isSketch ? 'Realtime Drawing Coach' : 'Voice-Based Formative Assessment'}</div>
         </div>
         <main className="act-main">
           <section className="act-voice-card act-card">
             <div className="act-voice-intro">
-              <h1>Hi, I'm ALEX.</h1>
-              <p>Let's have a conversation about {topicTitle}.</p>
+              <h1>{isSketch ? "Hi, I'm SKETCH." : "Hi, I'm ALEX."}</h1>
+              <p>{isSketch ? "Let's draw some pictures." : `Let's have a conversation about ${topicTitle}.`}</p>
             </div>
             <div className={`act-voice-status-label act-voice-status-label-${voiceStatus}`}>{statusLabel}</div>
             <div className="act-voice-controls">
@@ -720,39 +827,70 @@ function App() {
             {error && <div className="act-error-message">{error}</div>}
           </section>
 
-          <section className="act-score-dock act-card">
-            <div className="act-score-header">
-              <span>Assessment Steps</span>
-            </div>
-            <div className="act-objective-list">
-              {getAssessmentObjectives().map((objective, index) => {
-                const score = getAssessmentScores()[index];
-                const mastered = score >= 85;
+          {isSketch ? (
+            <section className="act-sketch-dock act-card">
+              <div className="act-sketch-toolbar" aria-label="Drawing tools">
+                {(['black', 'red', 'green', 'blue'] as PenColor[]).map(color => (
+                  <button
+                    key={color}
+                    className={`act-color-btn ${penColor === color ? 'act-color-btn-active' : ''}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setPenColor(color)}
+                    aria-label={`${color} pen`}
+                    type="button"
+                  />
+                ))}
+                <button
+                  className={`act-eraser-btn ${penColor === 'erase' ? 'act-eraser-btn-active' : ''}`}
+                  onClick={() => setPenColor('erase')}
+                  type="button"
+                >
+                  Erase
+                </button>
+                <button className="act-clear-btn" onClick={handleClearCanvas} type="button">Clear</button>
+              </div>
+              <canvas
+                ref={canvasRef}
+                className="act-sketch-canvas"
+                width={1200}
+                height={650}
+                onPointerDown={handlePointerDownCanvas}
+                onPointerMove={handlePointerMoveCanvas}
+                onPointerUp={handlePointerUpCanvas}
+                onPointerCancel={handlePointerUpCanvas}
+                onPointerLeave={() => { isDrawingRef.current = false; }}
+                aria-label="Drawing canvas"
+              />
+            </section>
+          ) : (
+            <section className="act-score-dock act-card">
+              <div className="act-score-header">
+                <span>Assessment Steps</span>
+              </div>
+              <div className="act-objective-list">
+                {getAssessmentObjectives().map((objective, index) => {
+                  const score = getAssessmentScores()[index];
+                  const mastered = score >= 85;
 
-                return (
-                  <div className="act-objective-score" key={`${objective}-${index}`}>
-                    <p className="act-objective-text">{objective}</p>
-                    <div className="act-objective-score-row">
-                      <div className="act-score-track act-score-track-objective" aria-label={`${objective} score`}>
-                        <div className="act-score-fill act-score-fill-objective" style={{ width: `${score}%` }} />
+                  return (
+                    <div className="act-objective-score" key={`${objective}-${index}`}>
+                      <p className="act-objective-text">{objective}</p>
+                      <div className="act-objective-score-row">
+                        <div className="act-score-track act-score-track-objective" aria-label={`${objective} score`}>
+                          <div className="act-score-fill act-score-fill-objective" style={{ width: `${score}%` }} />
+                        </div>
+                        <strong>{score}/100</strong>
+                        <span className={`act-objective-check ${mastered ? 'act-objective-check-complete' : ''}`} aria-label={mastered ? 'Mastered' : 'Not yet mastered'}>✓</span>
                       </div>
-                      <strong>{score}/100</strong>
-                      <span className={`act-objective-check ${mastered ? 'act-objective-check-complete' : ''}`} aria-label={mastered ? 'Mastered' : 'Not yet mastered'}>
-                        ✓
-                      </span>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              className="act-submit-assessment-btn"
-              onClick={handleSaveScore}
-              disabled={!isAssessmentComplete() || savingScore}
-            >
-              {savingScore ? 'Submitting...' : 'Submit'}
-            </button>
-          </section>
+                  );
+                })}
+              </div>
+              <button className="act-submit-assessment-btn" onClick={handleSaveScore} disabled={!isAssessmentComplete() || savingScore}>
+                {savingScore ? 'Submitting...' : 'Submit'}
+              </button>
+            </section>
+          )}
         </main>
       </div>
     );

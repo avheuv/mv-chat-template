@@ -117,8 +117,8 @@ async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
     if not prototype:
         raise HTTPException(status_code=404, detail="Prototype not found")
 
-    if prototype.ui.mode != "voice_assessment":
-        raise HTTPException(status_code=400, detail="Prototype is not configured for realtime voice assessment")
+    if prototype.ui.mode not in {"voice_assessment", "sketch"}:
+        raise HTTPException(status_code=400, detail="Prototype is not configured for realtime voice")
 
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key is not configured")
@@ -130,6 +130,25 @@ async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
     )
     model_to_use = overrides["model"]
 
+    assessment_tools = [
+        {
+            "type": "function",
+            "name": "update_assessment_scores",
+            "description": "Update the visible assessment scores after a substantive student response.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "current_sub_objective_index": {"type": "integer", "minimum": 0, "maximum": 2},
+                    "sub_objective_scores": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 0, "maximum": 100}},
+                    "summary": {"type": "string"},
+                    "tip": {"type": "string"}
+                },
+                "required": ["current_sub_objective_index", "sub_objective_scores", "summary", "tip"],
+                "additionalProperties": False
+            }
+        }
+    ]
+
     session_config = {
         "session": {
             "type": "realtime",
@@ -138,45 +157,7 @@ async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
             "audio": {
                 "output": {"voice": "marin"}
             },
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "update_assessment_scores",
-                    "description": "Update the visible assessment scores after a substantive student response.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "current_sub_objective_index": {
-                                "type": "integer",
-                                "description": "Zero-based index of the current sub-objective being assessed.",
-                                "minimum": 0,
-                                "maximum": 2
-                            },
-                            "sub_objective_scores": {
-                                "type": "array",
-                                "description": "Exactly three student understanding scores from 0 to 100, one for each sequenced sub-objective. Keep future objective scores at 0 until assessed.",
-                                "minItems": 3,
-                                "maxItems": 3,
-                                "items": {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 100
-                                }
-                            },
-                            "summary": {
-                                "type": "string",
-                                "description": "Brief evaluative summary of the student's understanding so far."
-                            },
-                            "tip": {
-                                "type": "string",
-                                "description": "Instructional nudge of 20 words or less."
-                            }
-                        },
-                        "required": ["current_sub_objective_index", "sub_objective_scores", "summary", "tip"],
-                        "additionalProperties": False
-                    }
-                }
-            ],
+            "tools": assessment_tools if prototype.ui.mode == "voice_assessment" else [],
             "tool_choice": "auto"
         }
     }

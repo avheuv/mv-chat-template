@@ -315,11 +315,32 @@ function App() {
     return topicDetails.join('-').trim() || fullTopicTitle.trim();
   };
 
+  const getSketchQuestionInput = () => activePrototypeUI?.inputs.find(input => input.id === 'question');
+
+  const getSketchQuestionValue = () => {
+    const questionInput = getSketchQuestionInput();
+    return questionInput ? inputValues[questionInput.id] : '';
+  };
+
   const getSketchQuestion = () => {
-    const questionInput = activePrototypeUI?.inputs.find(input => input.id === 'question');
-    return questionInput?.options?.find(option => option.value === inputValues[questionInput.id])?.label
-      || (questionInput ? inputValues[questionInput.id] : '')
+    const questionInput = getSketchQuestionInput();
+    const selectedValue = getSketchQuestionValue();
+    return questionInput?.options?.find(option => option.value === selectedValue)?.label
+      || selectedValue
       || 'Why do the seasons occur on Earth?';
+  };
+
+  const getSketchCoachingFocus = () => {
+    if (getSketchQuestionValue() === 'function_shapes_xy_plane') {
+      return [
+        'This is a high school math sketching task about function shapes on an XY coordinate plane.',
+        'Start by asking the student to sketch the function shapes on axes and explain what each curve represents.',
+        'Evaluate the drawing against the explanation: look for correctly labeled axes, a straight line for a linear function, U-shaped parabola for a quadratic, J-shaped rapid growth or decay for an exponential, and V-shape for an absolute value function.',
+        'Coach with short questions about intercepts, slope, vertex, curvature, symmetry, and growth patterns. Do not simply draw or list the correct answer for the student.'
+      ].join('\n');
+    }
+
+    return 'This is a high school science sketching task about Earth’s seasons. Focus on axial tilt, sunlight angle, day length, orbit position, and the common distance-from-the-Sun misconception.';
   };
 
   const getVoiceLessonContext = () => {
@@ -338,7 +359,8 @@ function App() {
         'Your goal is to help the student make an accurate, realistic drawing and explanation for a high school level.',
         'Do not score the student. Do not save anything. Do not give the answer or tell the student exactly what to draw.',
         'Respond only with one short coaching question, probing question, or hint. Keep it warm and concise.',
-        'Focus on scientific accuracy: Earth’s axial tilt, sunlight angle, day length, orbit position, and common misconceptions such as distance from the Sun.'
+        `Selected prompt coaching focus:
+${getSketchCoachingFocus()}`
       ].join('\n\n');
     }
 

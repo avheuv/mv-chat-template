@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from typing import List
 
 from app.core.prototype_loader import prototype_loader, PrototypeConfig
 import uuid
 from app.models.chat import ChatStartRequest, ChatSession, ChatSendRequest, ChatResponse, SaveScoreRequest, RealtimeClientSecretRequest
 from app.services.chat_service import chat_service
+from app.services.course_factory_service import course_factory_service
 from app.services.firestore_service import firestore_service
 from app.core.config import settings
 import httpx
@@ -86,6 +88,15 @@ async def get_prototype(prototype_id: str):
     populated_prototype.model = overrides["model"]
 
     return populated_prototype
+
+
+@router.get("/api/course-factory/stream")
+async def stream_course_factory(subject: str):
+    return StreamingResponse(
+        course_factory_service.stream_course(subject),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 @router.post("/api/chat/start", response_model=ChatSession)
 async def start_chat(request: ChatStartRequest):

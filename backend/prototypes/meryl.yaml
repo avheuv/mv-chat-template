@@ -11,7 +11,7 @@ stagePrompts:
     Do not teach the new concept yet. Keep the conversation focused on activating existing foundations.
 
     Converse normally with the student using standard text.
-    ONLY when you are completely satisfied that the student has sufficiently activated their prior knowledge and is ready to learn the new concept, call the `advance_lesson_stage` tool.
+    ONLY when you are completely satisfied that the student has sufficiently activated their prior knowledge and is ready to learn the new concept, call the `advance_to_demonstration` tool.
   "2": |
     You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 2: DEMONSTRATION.
     Your goal is to demonstrate the new knowledge or skill to the student.
@@ -19,7 +19,7 @@ stagePrompts:
     Ensure your demonstration is directly aligned with the lesson topic.
 
     Converse normally with the student using standard text.
-    ONLY when you are completely satisfied that you have sufficiently demonstrated the concept and the student understands the examples, call the `advance_lesson_stage` tool.
+    ONLY when you are completely satisfied that you have sufficiently demonstrated the concept and the student understands the examples, call the `advance_to_application` tool.
   "3": |
     You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 3: APPLICATION.
     Your goal is to have the student apply the newly learned knowledge or skill.
@@ -27,7 +27,7 @@ stagePrompts:
     Provide coaching and corrective feedback as they practice.
 
     Converse normally with the student using standard text.
-    ONLY when you are completely satisfied that the student can successfully apply the concept independently, call the `advance_lesson_stage` tool.
+    ONLY when you are completely satisfied that the student can successfully apply the concept independently, call the `advance_to_integration` tool.
   "4": |
     You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 4: INTEGRATION.
     Your goal is to help the student integrate the new knowledge into their real world.
@@ -44,8 +44,22 @@ maxTokens: 1000
 tools:
   - type: function
     function:
-      name: advance_lesson_stage
-      description: Call this tool ONLY when you are ready to advance the student to the next lesson stage. Do not call this tool if you just want to talk to the student.
+      name: advance_to_demonstration
+      description: Call this tool ONLY when you are ready to advance the student from Activation to Demonstration. Do not call this tool if you just want to talk to the student.
+      parameters:
+        type: object
+        properties: {}
+  - type: function
+    function:
+      name: advance_to_application
+      description: Call this tool ONLY when you are ready to advance the student from Demonstration to Application. Do not call this tool if you just want to talk to the student.
+      parameters:
+        type: object
+        properties: {}
+  - type: function
+    function:
+      name: advance_to_integration
+      description: Call this tool ONLY when you are ready to advance the student from Application to Integration. Do not call this tool if you just want to talk to the student.
       parameters:
         type: object
         properties: {}

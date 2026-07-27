@@ -36,6 +36,7 @@ class PrototypeConfig(BaseModel):
     maxTokens: int = 1000
     contextSources: List[str] = []
     outputSpec: Optional[Dict[str, Any]] = None
+    tools: Optional[List[Dict[str, Any]]] = None
     saveHandler: Optional[str] = None
     ui: PrototypeUIConfig = Field(default_factory=PrototypeUIConfig)
 

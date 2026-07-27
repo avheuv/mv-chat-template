@@ -188,6 +188,11 @@ class ChatService:
 
         # Handle Save Handlers
         if prototype.saveHandler and structured_data:
+            # Special case for Meryl: update the in-memory session object before saving
+            if prototype.saveHandler == "handleMerylStage" and structured_data.get("advance_stage"):
+                if session.meryl_stage < 4:
+                    session.meryl_stage += 1
+
             handler = save_registry.get(prototype.saveHandler)
             if handler:
                 try:

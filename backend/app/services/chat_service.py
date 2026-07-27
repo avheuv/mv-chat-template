@@ -25,7 +25,7 @@ class ChatService:
 
         # Load Overrides from Firestore
         overrides = await firestore_service.get_prototype_overrides(
-            request.prototype_id, prototype.systemPrompt, prototype.model
+            request.prototype_id, prototype.systemPrompt, prototype.model, prototype.stagePrompts
         )
 
         # Build Context String if needed
@@ -41,6 +41,13 @@ class ChatService:
         # Create the system prompt using the override
         system_content = overrides["systemPrompt"]
         model_to_use = overrides["model"]
+
+        # Inject meryl stage prompt if applicable
+        if prototype.ui.mode == "meryl" and overrides.get("stagePrompts"):
+            stage_prompt = overrides["stagePrompts"].get(str(session.meryl_stage))
+            if stage_prompt:
+                system_content = stage_prompt
+
         if context_parts:
             system_content += "\n\n--- BACKGROUND CONTEXT ---\n" + "\n\n".join(context_parts)
 
@@ -139,8 +146,23 @@ class ChatService:
         # Fetch model override dynamically (so it works even if we restart or clear cache)
         # Note: system prompt is fixed during start_session, but model can be dynamic per turn
         overrides = await firestore_service.get_prototype_overrides(
-            prototype.id, prototype.systemPrompt, prototype.model
+            prototype.id, prototype.systemPrompt, prototype.model, prototype.stagePrompts
         )
+
+        # If it's Meryl and we need to update the system prompt for the new stage
+        if prototype.ui.mode == "meryl" and overrides.get("stagePrompts"):
+            system_msg_index = next((i for i, m in enumerate(session.messages) if m.role == "system"), None)
+            if system_msg_index is not None:
+                stage_prompt = overrides["stagePrompts"].get(str(session.meryl_stage))
+                if stage_prompt:
+                    # Look for background context to re-append
+                    bg_context = ""
+                    if "--- BACKGROUND CONTEXT ---" in session.messages[system_msg_index].content:
+                        bg_context = "\n\n--- BACKGROUND CONTEXT ---\n" + session.messages[system_msg_index].content.split("--- BACKGROUND CONTEXT ---")[1].strip()
+                    session.messages[system_msg_index].content = stage_prompt + bg_context
+
+        # Re-build llm_messages because we might have just updated the system prompt
+        llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
         # Call LLM
         content, structured_data = await llm_service.generate_response(

@@ -13,6 +13,7 @@ class ChatSession(BaseModel):
     prototype_id: str
     inputs: Dict[str, str] = Field(default_factory=dict)
     assessment_objectives: List[str] = Field(default_factory=list)
+    meryl_stage: int = 1
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     messages: List[Message] = []
 

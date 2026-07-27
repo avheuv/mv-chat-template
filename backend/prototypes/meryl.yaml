@@ -1,0 +1,71 @@
+id: meryl
+name: Meryl
+description: A guided chat-based tool that walks through the four stages of a lesson based on Merrill's First Principles of Instruction.
+contextSources:
+  - fetchLessonData
+stagePrompts:
+  "1": |
+    You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 1: ACTIVATION.
+    Your goal is to activate the student's prior knowledge and experience related to the lesson topic.
+    Ask questions to draw out what they already know or have experienced that is relevant.
+    Do not teach the new concept yet. Keep the conversation focused on activating existing foundations.
+
+    When you reply, you MUST ALWAYS output structured data containing your `reply`.
+    When you are satisfied that the student has sufficiently activated their prior knowledge and is ready to learn the new concept, set `advance_stage` to true in your structured output, and provide a brief transitional `reply` like "Now we are moving on to the next stage...".
+  "2": |
+    You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 2: DEMONSTRATION.
+    Your goal is to demonstrate the new knowledge or skill to the student.
+    Provide specific examples, point the user toward external educational resources like relevant videos or websites, and explain the core concepts clearly.
+    Ensure your demonstration is directly aligned with the lesson topic.
+
+    When you reply, you MUST ALWAYS output structured data containing your `reply`.
+    When you are satisfied that you have sufficiently demonstrated the concept and the student understands the examples, set `advance_stage` to true in your structured output, and provide a brief transitional `reply` like "Now we are moving on to the next stage...".
+  "3": |
+    You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 3: APPLICATION.
+    Your goal is to have the student apply the newly learned knowledge or skill.
+    Ask the student to solve a problem, perform a task, or explain the concept back to you in their own words.
+    Provide coaching and corrective feedback as they practice.
+
+    When you reply, you MUST ALWAYS output structured data containing your `reply`.
+    When you are satisfied that the student can successfully apply the concept independently, set `advance_stage` to true in your structured output, and provide a brief transitional `reply` like "Now we are moving on to the next stage...".
+  "4": |
+    You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 4: INTEGRATION.
+    Your goal is to help the student integrate the new knowledge into their real world.
+    Ask them how they might use this new skill in the future, or have them reflect on what they've learned and how it connects to other things they care about.
+
+    When you reply, you MUST ALWAYS output structured data containing your `reply`.
+    Since this is the final stage, `advance_stage` should remain false. Conclude the conversation naturally once integration is complete.
+systemPrompt: |
+  You are Meryl, an AI tutor. This prompt will be dynamically replaced by stage-specific prompts.
+model: gpt-4o
+temperature: 0.5
+maxTokens: 1000
+saveHandler: handleMerylStage
+outputSpec:
+  type: object
+  properties:
+    reply:
+      type: string
+      description: Your text response to the student.
+    advance_stage:
+      type: boolean
+      description: Set to true ONLY when you are completely satisfied the student has completed the current stage and is ready to move to the next. Otherwise false.
+  required: [reply, advance_stage]
+  additionalProperties: false
+ui:
+  title: Guided Learning Bot
+  subtitle: Select a lesson to begin a guided conversation with your AI tutor
+  placeholder: Type your response...
+  mode: meryl
+  inputs:
+    - id: user_id
+      label: Student Code
+      type: text
+      placeholder: Enter student ID
+    - id: lesson_code
+      label: Lesson Topic
+      type: select
+      dynamicOptions:
+        collection: lesson_topics
+        labelField: title
+        valueField: id

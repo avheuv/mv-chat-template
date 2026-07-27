@@ -24,7 +24,7 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
-    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory';
+    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl';
     inputs: UIInputConfig[];
   }
 };
@@ -41,6 +41,7 @@ type ChatSession = {
   user_id: string;
   messages: Message[];
   assessment_objectives?: string[];
+  meryl_stage?: number;
 };
 
 type AssessmentData = {
@@ -317,7 +318,7 @@ function App() {
   const isVoiceAssessment = activePrototypeUI?.mode === 'voice_assessment';
   const isSketch = activePrototypeUI?.mode === 'sketch';
   const isCourseFactory = activePrototypeUI?.mode === 'course_factory';
-
+  const isMeryl = activePrototypeUI?.mode === 'meryl';
 
   useEffect(() => {
     if (view !== 'chat' || !isSketch || !canvasRef.current) return;
@@ -1171,6 +1172,11 @@ ${getSketchCoachingFocus()}`
         <div className="act-brand">{activePrototypeUI?.title || 'Chat'}</div>
       </div>
       <main className="act-main relative">
+        {isMeryl && (
+          <div className="act-voice-intro" style={{ textAlign: 'center', marginTop: '20px' }}>
+            <h1>Hi, I'm MERYL.</h1>
+          </div>
+        )}
         <div className="act-chat-messages" style={{ paddingBottom: `${composerHeight + 20}px` }}>
           {session.messages.filter(m => m.role !== 'system').map(m => (
             <div key={m.id} className={`act-message-row act-message-row-${m.role}`}>
@@ -1222,7 +1228,45 @@ ${getSketchCoachingFocus()}`
                 Send
               </button>
             </div>
-            {assessmentData && (
+            {isMeryl && (
+              <div className="act-meryl-dock" style={{
+                marginTop: '12px',
+                display: 'flex',
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                width: '100%',
+                backgroundColor: 'var(--panel)',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                border: '1px solid rgba(229, 231, 235, 0.8)',
+                boxShadow: 'var(--shadow)'
+              }}>
+                {['Activation', 'Demonstration', 'Application', 'Integration'].map((stageName, index) => {
+                  const stageNum = index + 1;
+                  const currentStage = session.meryl_stage || 1;
+                  const isCompleted = stageNum < currentStage;
+                  const isCurrent = stageNum === currentStage;
+
+                  return (
+                    <div key={stageName} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: isCurrent ? '#16a34a' : (isCompleted ? '#9ca3af' : '#d1d5db'),
+                      fontWeight: isCurrent ? 'bold' : 'normal'
+                    }}>
+                      <span>{stageNum}. {stageName}</span>
+                      {isCompleted && (
+                        <span style={{ color: '#16a34a' }}>✓</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {assessmentData && !isMeryl && (
               <div className="act-score-bar-container" style={{
                 marginTop: '12px',
                 display: 'flex',

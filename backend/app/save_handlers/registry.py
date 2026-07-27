@@ -83,13 +83,3 @@ async def track_assessment_score(session_id: str, user_id: str, prototype_id: st
     pass
 
 registry.register("trackAssessmentScore", track_assessment_score)
-
-async def handle_meryl_stage(session_id: str, user_id: str, prototype_id: str, data: Dict[str, Any]):
-    """
-    Meryl stage is handled directly in chat_service.py to prevent state overwrite bugs.
-    This handler can just log the advancement.
-    """
-    if data.get("advance_stage"):
-        print(f"Meryl stage advance triggered for session {session_id}")
-
-registry.register("handleMerylStage", handle_meryl_stage)

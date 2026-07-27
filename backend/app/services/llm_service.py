@@ -12,11 +12,12 @@ class LLMService:
         model: str = "gpt-4o",
         temperature: float = 0.7,
         max_tokens: int = 1000,
-        output_schema: Optional[Dict[str, Any]] = None
-    ) -> tuple[str, Optional[Dict[str, Any]]]:
+        output_schema: Optional[Dict[str, Any]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> tuple[str, Optional[Dict[str, Any]], Optional[str]]:
         """
         Generates a response from the LLM.
-        If output_schema is provided, uses Structured Outputs.
+        Returns: (content_string, structured_data_dict, tool_name_called)
         """
         params = {
             "model": model,
@@ -44,7 +45,9 @@ class LLMService:
                     "parameters": output_schema
                 }
             }]
-            # Optional: you could force it if you want, but auto is better for conversation
+            params["tool_choice"] = "auto"
+        elif tools:
+            params["tools"] = tools
             params["tool_choice"] = "auto"
 
         try:
@@ -53,10 +56,12 @@ class LLMService:
             content = message.content or ""
 
             structured_data = None
+            tool_name_called = None
 
             if message.tool_calls:
                 # If the AI decided to call the tool
                 for tool_call in message.tool_calls:
+                    tool_name_called = tool_call.function.name
                     if tool_call.function.name == "save_structured_data":
                         try:
                             structured_data = json.loads(tool_call.function.arguments)
@@ -71,7 +76,7 @@ class LLMService:
                 else:
                     content = "I have successfully saved your information!"
 
-            return content, structured_data
+            return content, structured_data, tool_name_called
 
         except Exception as e:
             print(f"Error calling LLM: {e}")

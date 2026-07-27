@@ -89,12 +89,13 @@ class ChatService:
             llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
             # Call LLM
-            content, structured_data = await llm_service.generate_response(
+            content, structured_data, _ = await llm_service.generate_response(
                 messages=llm_messages,
                 model=model_to_use,
                 temperature=prototype.temperature,
                 max_tokens=prototype.maxTokens,
-                output_schema=prototype.outputSpec
+                output_schema=prototype.outputSpec,
+                tools=prototype.tools
             )
 
             # Remove the hidden trigger prompt so the user never sees it in the chat history
@@ -165,13 +166,47 @@ class ChatService:
         llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
         # Call LLM
-        content, structured_data = await llm_service.generate_response(
+        content, structured_data, tool_name_called = await llm_service.generate_response(
             messages=llm_messages,
             model=overrides["model"],
             temperature=prototype.temperature,
             max_tokens=prototype.maxTokens,
-            output_schema=prototype.outputSpec
+            output_schema=prototype.outputSpec,
+            tools=prototype.tools
         )
+
+        # Handle Meryl Tool Call for Advancing Stage
+        if tool_name_called == "advance_lesson_stage" and prototype.ui.mode == "meryl":
+            if session.meryl_stage < 4:
+                session.meryl_stage += 1
+
+                # Update System Prompt in history for the next pass
+                system_msg_index = next((i for i, m in enumerate(session.messages) if m.role == "system"), None)
+                if system_msg_index is not None and overrides.get("stagePrompts"):
+                    stage_prompt = overrides["stagePrompts"].get(str(session.meryl_stage))
+                    if stage_prompt:
+                        bg_context = ""
+                        if "--- BACKGROUND CONTEXT ---" in session.messages[system_msg_index].content:
+                            bg_context = "\n\n--- BACKGROUND CONTEXT ---\n" + session.messages[system_msg_index].content.split("--- BACKGROUND CONTEXT ---")[1].strip()
+                        session.messages[system_msg_index].content = stage_prompt + bg_context
+
+                # Trigger LLM again to get the transitional text now that the stage is updated
+                llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
+
+                # We optionally inject a hidden instruction so it transitions smoothly
+                llm_messages.append({
+                    "role": "user",
+                    "content": "You just advanced the lesson stage. Please provide a brief transitional message and continue the conversation based on the new stage instructions."
+                })
+
+                content, structured_data, _ = await llm_service.generate_response(
+                    messages=llm_messages,
+                    model=overrides["model"],
+                    temperature=prototype.temperature,
+                    max_tokens=prototype.maxTokens,
+                    output_schema=prototype.outputSpec,
+                    tools=prototype.tools
+                )
 
         # If the output schema requires 'reply', LLM service might not populate content
         # Check if structured_data has a 'reply' string to use as the actual message content
@@ -188,11 +223,6 @@ class ChatService:
 
         # Handle Save Handlers
         if prototype.saveHandler and structured_data:
-            # Special case for Meryl: update the in-memory session object before saving
-            if prototype.saveHandler == "handleMerylStage" and structured_data.get("advance_stage"):
-                if session.meryl_stage < 4:
-                    session.meryl_stage += 1
-
             handler = save_registry.get(prototype.saveHandler)
             if handler:
                 try:

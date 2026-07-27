@@ -176,9 +176,16 @@ class ChatService:
         )
 
         # Handle Meryl Tool Call for Advancing Stage
-        if tool_name_called == "advance_lesson_stage" and prototype.ui.mode == "meryl":
-            if session.meryl_stage < 4:
-                session.meryl_stage += 1
+        meryl_tools = {
+            "advance_to_demonstration": 2,
+            "advance_to_application": 3,
+            "advance_to_integration": 4
+        }
+
+        if tool_name_called in meryl_tools and prototype.ui.mode == "meryl":
+            new_stage = meryl_tools[tool_name_called]
+            if session.meryl_stage < new_stage:
+                session.meryl_stage = new_stage
 
                 # Update System Prompt in history for the next pass
                 system_msg_index = next((i for i, m in enumerate(session.messages) if m.role == "system"), None)
@@ -196,7 +203,7 @@ class ChatService:
                 # We optionally inject a hidden instruction so it transitions smoothly
                 llm_messages.append({
                     "role": "user",
-                    "content": "You just advanced the lesson stage. Please provide a brief transitional message and continue the conversation based on the new stage instructions."
+                    "content": f"You just called {tool_name_called} and advanced the lesson stage. Please provide a brief transitional message and continue the conversation based on the new stage instructions."
                 })
 
                 content, structured_data, _ = await llm_service.generate_response(

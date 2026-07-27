@@ -25,10 +25,11 @@ class FirestoreService:
             return data
         return None
 
-    async def get_prototype_overrides(self, prototype_id: str, default_prompt: str, default_model: str) -> Dict[str, str]:
+    async def get_prototype_overrides(self, prototype_id: str, default_prompt: str, default_model: str, default_stage_prompts: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         overrides = {
             "systemPrompt": default_prompt,
-            "model": default_model
+            "model": default_model,
+            "stagePrompts": default_stage_prompts or {}
         }
 
         if not self.db: return overrides
@@ -42,14 +43,20 @@ class FirestoreService:
                     overrides["systemPrompt"] = data.get("systemPrompt")
                 if data.get("model"):
                     overrides["model"] = data.get("model")
+                if data.get("stagePrompts"):
+                    overrides["stagePrompts"] = data.get("stagePrompts")
             return overrides
 
         # If it doesn't exist, create it automatically with the defaults to guide the user
-        await self.set_document("prompts", prototype_id, {
+        initial_data = {
             "systemPrompt": default_prompt,
             "model": default_model,
             "_note": "Edit systemPrompt or model here to override the YAML config without redeploying."
-        })
+        }
+        if default_stage_prompts is not None:
+            initial_data["stagePrompts"] = default_stage_prompts
+
+        await self.set_document("prompts", prototype_id, initial_data)
         return overrides
 
     async def set_document(self, collection: str, doc_id: str, data: Dict[str, Any]):

@@ -81,11 +81,12 @@ async def get_prototype(prototype_id: str):
 
     # Inject Firestore override before returning
     overrides = await firestore_service.get_prototype_overrides(
-        prototype_id, populated_prototype.systemPrompt, populated_prototype.model
+        prototype_id, populated_prototype.systemPrompt, populated_prototype.model, populated_prototype.stagePrompts
     )
 
     populated_prototype.systemPrompt = overrides["systemPrompt"]
     populated_prototype.model = overrides["model"]
+    populated_prototype.stagePrompts = overrides.get("stagePrompts")
 
     return populated_prototype
 

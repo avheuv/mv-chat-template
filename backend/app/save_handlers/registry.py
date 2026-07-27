@@ -83,3 +83,21 @@ async def track_assessment_score(session_id: str, user_id: str, prototype_id: st
     pass
 
 registry.register("trackAssessmentScore", track_assessment_score)
+
+async def handle_meryl_stage(session_id: str, user_id: str, prototype_id: str, data: Dict[str, Any]):
+    """
+    Increments the meryl_stage in the session if advance_stage is true.
+    """
+    from app.services.chat_service import chat_service
+    from app.services.firestore_service import firestore_service
+
+    if data.get("advance_stage"):
+        session = await chat_service.get_session(session_id)
+        if session:
+            # Increment stage but cap at 4
+            if session.meryl_stage < 4:
+                session.meryl_stage += 1
+                await firestore_service.set_document("sessions", session.id, session.dict())
+                print(f"Meryl stage advanced to {session.meryl_stage} for session {session_id}")
+
+registry.register("handleMerylStage", handle_meryl_stage)

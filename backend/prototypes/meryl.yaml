@@ -45,24 +45,39 @@ tools:
   - type: function
     function:
       name: advance_to_demonstration
-      description: Call this tool ONLY when you are ready to advance the student from Activation to Demonstration. Do not call this tool if you just want to talk to the student.
+      description: Call this tool ONLY when you have had a sufficient back-and-forth conversation and you are absolutely certain the student is ready to advance from Activation to Demonstration. Do not call this prematurely.
       parameters:
         type: object
-        properties: {}
+        properties:
+          rationale:
+            type: string
+            description: Provide a detailed, 1-2 sentence explanation for why you believe the student is ready to advance. What specific evidence from their messages supports this?
+        required: [rationale]
+        additionalProperties: false
   - type: function
     function:
       name: advance_to_application
-      description: Call this tool ONLY when you are ready to advance the student from Demonstration to Application. Do not call this tool if you just want to talk to the student.
+      description: Call this tool ONLY when you have had a sufficient back-and-forth conversation and you are absolutely certain the student is ready to advance from Demonstration to Application. Do not call this prematurely.
       parameters:
         type: object
-        properties: {}
+        properties:
+          rationale:
+            type: string
+            description: Provide a detailed, 1-2 sentence explanation for why you believe the student is ready to advance. What specific evidence from their messages supports this?
+        required: [rationale]
+        additionalProperties: false
   - type: function
     function:
       name: advance_to_integration
-      description: Call this tool ONLY when you are ready to advance the student from Application to Integration. Do not call this tool if you just want to talk to the student.
+      description: Call this tool ONLY when you have had a sufficient back-and-forth conversation and you are absolutely certain the student is ready to advance from Application to Integration. Do not call this prematurely.
       parameters:
         type: object
-        properties: {}
+        properties:
+          rationale:
+            type: string
+            description: Provide a detailed, 1-2 sentence explanation for why you believe the student is ready to advance. What specific evidence from their messages supports this?
+        required: [rationale]
+        additionalProperties: false
 ui:
   title: Guided Learning Bot
   subtitle: Select a lesson to begin a guided conversation with your AI tutor

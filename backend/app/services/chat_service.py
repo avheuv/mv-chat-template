@@ -203,6 +203,15 @@ class ChatService:
             if session.meryl_stage < new_stage:
                 session.meryl_stage = new_stage
 
+                # Inject a visible debug message into the chat so the user can see WHY it advanced
+                rationale = structured_data.get("rationale", "No rationale provided.") if structured_data else "No rationale provided."
+                debug_message = Message(
+                    id=str(uuid.uuid4()),
+                    role="assistant",
+                    content=f"> **System Debug:** AI called `{tool_name_called}`.\n> **Rationale:** _{rationale}_"
+                )
+                session.messages.append(debug_message)
+
                 # Update System Prompt in history for the next pass
                 system_msg_index = next((i for i, m in enumerate(session.messages) if m.role == "system"), None)
                 if system_msg_index is not None and overrides.get("stagePrompts"):

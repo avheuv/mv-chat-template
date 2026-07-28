@@ -62,11 +62,16 @@ class LLMService:
                 # If the AI decided to call the tool
                 for tool_call in message.tool_calls:
                     tool_name_called = tool_call.function.name
-                    if tool_call.function.name == "save_structured_data":
-                        try:
-                            structured_data = json.loads(tool_call.function.arguments)
-                        except json.JSONDecodeError:
-                            print("Warning: Failed to parse tool arguments.")
+                    try:
+                        parsed_args = json.loads(tool_call.function.arguments)
+                        if tool_call.function.name == "save_structured_data":
+                            structured_data = parsed_args
+                        else:
+                            # For other generic tools (like advance_to_demonstration), we can pass
+                            # the arguments back via the structured_data dict so the backend can read 'rationale'
+                            structured_data = parsed_args
+                    except json.JSONDecodeError:
+                        print("Warning: Failed to parse tool arguments.")
 
             # If the model ONLY called a tool and returned no text, don't override it with a generic
             # message if the tool itself contains a 'reply' string.

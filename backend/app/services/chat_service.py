@@ -165,6 +165,22 @@ class ChatService:
         # Re-build llm_messages because we might have just updated the system prompt
         llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
+        # Dynamically filter tools based on the current Meryl stage
+        active_tools = prototype.tools
+        if prototype.ui.mode == "meryl" and active_tools:
+            allowed_tool = None
+            if session.meryl_stage == 1:
+                allowed_tool = "advance_to_demonstration"
+            elif session.meryl_stage == 2:
+                allowed_tool = "advance_to_application"
+            elif session.meryl_stage == 3:
+                allowed_tool = "advance_to_integration"
+
+            if allowed_tool:
+                active_tools = [t for t in active_tools if t.get("function", {}).get("name") == allowed_tool]
+            else:
+                active_tools = None
+
         # Call LLM
         content, structured_data, tool_name_called = await llm_service.generate_response(
             messages=llm_messages,
@@ -172,7 +188,7 @@ class ChatService:
             temperature=prototype.temperature,
             max_tokens=prototype.maxTokens,
             output_schema=prototype.outputSpec,
-            tools=prototype.tools
+            tools=active_tools
         )
 
         # Handle Meryl Tool Call for Advancing Stage
@@ -206,19 +222,24 @@ class ChatService:
                     "content": f"You just called {tool_name_called} and advanced the lesson stage. Please provide a brief transitional message and continue the conversation based on the new stage instructions."
                 })
 
+                # We specifically pass tools=None here to force the model to reply with text
+                # and prevent it from trying to chain another tool call immediately.
                 content, structured_data, _ = await llm_service.generate_response(
                     messages=llm_messages,
                     model=overrides["model"],
                     temperature=prototype.temperature,
                     max_tokens=prototype.maxTokens,
                     output_schema=prototype.outputSpec,
-                    tools=prototype.tools
+                    tools=None
                 )
 
         # If the output schema requires 'reply', LLM service might not populate content
         # Check if structured_data has a 'reply' string to use as the actual message content
         if not content and structured_data and "reply" in structured_data:
             content = structured_data["reply"]
+
+        if not content:
+            content = "Great! Let's continue to the next stage."
 
         # Append assistant message
         assistant_message = Message(

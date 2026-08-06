@@ -173,8 +173,6 @@ class ChatService:
                 allowed_tool = "advance_to_demonstration"
             elif session.meryl_stage == 2:
                 allowed_tool = "advance_to_application"
-            elif session.meryl_stage == 3:
-                allowed_tool = "advance_to_integration"
 
             if allowed_tool:
                 active_tools = [t for t in active_tools if t.get("function", {}).get("name") == allowed_tool]
@@ -194,23 +192,13 @@ class ChatService:
         # Handle Meryl Tool Call for Advancing Stage
         meryl_tools = {
             "advance_to_demonstration": 2,
-            "advance_to_application": 3,
-            "advance_to_integration": 4
+            "advance_to_application": 3
         }
 
         if tool_name_called in meryl_tools and prototype.ui.mode == "meryl":
             new_stage = meryl_tools[tool_name_called]
             if session.meryl_stage < new_stage:
                 session.meryl_stage = new_stage
-
-                # Inject a visible debug message into the chat so the user can see WHY it advanced
-                rationale = structured_data.get("rationale", "No rationale provided.") if structured_data else "No rationale provided."
-                debug_message = Message(
-                    id=str(uuid.uuid4()),
-                    role="assistant",
-                    content=f"> **System Debug:** AI called `{tool_name_called}`.\n> **Rationale:** _{rationale}_"
-                )
-                session.messages.append(debug_message)
 
                 # Update System Prompt in history for the next pass
                 system_msg_index = next((i for i, m in enumerate(session.messages) if m.role == "system"), None)

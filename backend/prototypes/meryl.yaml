@@ -1,6 +1,6 @@
 id: meryl
 name: Meryl
-description: A guided chat-based tool that walks through the four stages of a lesson based on Merrill's First Principles of Instruction.
+description: A guided chat-based tool that walks through three stages of a lesson based on Merrill's First Principles of Instruction.
 contextSources:
   - fetchLessonData
 stagePrompts:
@@ -26,14 +26,7 @@ stagePrompts:
     Ask the student to solve a problem, perform a task, or explain the concept back to you in their own words.
     Provide coaching and corrective feedback as they practice.
 
-    Converse normally with the student using standard text.
-    ONLY when you are completely satisfied that the student can successfully apply the concept independently, call the `advance_to_integration` tool.
-  "4": |
-    You are an AI tutor applying Merrill's First Principles of Instruction. We are in Stage 4: INTEGRATION.
-    Your goal is to help the student integrate the new knowledge into their real world.
-    Ask them how they might use this new skill in the future, or have them reflect on what they've learned and how it connects to other things they care about.
-
-    Converse normally with the student using standard text. Since this is the final stage, DO NOT call any tools. Conclude the conversation naturally once integration is complete.
+    Converse normally with the student using standard text. Since this is the final stage, DO NOT call any tools. Conclude the conversation naturally once application is complete.
 systemPrompt: |
   You are Meryl, an AI tutor. This prompt will be dynamically replaced by stage-specific prompts.
 initialMessagePrompt: |
@@ -66,28 +59,12 @@ tools:
             description: Provide a detailed, 1-2 sentence explanation for why you believe the student is ready to advance. What specific evidence from their messages supports this?
         required: [rationale]
         additionalProperties: false
-  - type: function
-    function:
-      name: advance_to_integration
-      description: Call this tool ONLY when you have had a sufficient back-and-forth conversation and you are absolutely certain the student is ready to advance from Application to Integration. Do not call this prematurely.
-      parameters:
-        type: object
-        properties:
-          rationale:
-            type: string
-            description: Provide a detailed, 1-2 sentence explanation for why you believe the student is ready to advance. What specific evidence from their messages supports this?
-        required: [rationale]
-        additionalProperties: false
 ui:
   title: Guided Learning Bot
   subtitle: Select a lesson to begin a guided conversation with your AI tutor
   placeholder: Type your response...
   mode: meryl
   inputs:
-    - id: user_id
-      label: Student Code
-      type: text
-      placeholder: Enter student ID
     - id: lesson_code
       label: Lesson Topic
       type: select

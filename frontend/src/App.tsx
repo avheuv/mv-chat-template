@@ -1233,7 +1233,9 @@ ${getSketchCoachingFocus()}`
                 marginTop: '12px',
                 display: 'flex',
                 flexDirection: 'row',
+                justifyContent: 'center',
                 alignItems: 'center',
+                gap: '32px',
                 width: '100%',
                 backgroundColor: 'var(--panel)',
                 padding: '12px 16px',
@@ -1241,38 +1243,30 @@ ${getSketchCoachingFocus()}`
                 border: '1px solid rgba(229, 231, 235, 0.8)',
                 boxShadow: 'var(--shadow)'
               }}>
-                <div style={{ fontWeight: 'bold', color: 'var(--text)', marginRight: 'auto' }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--text)' }}>
                   Lesson Stage:
                 </div>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  justifyContent: 'center',
-                  gap: '32px',
-                  flex: 1
-                }}>
-                  {['Activation', 'Demonstration', 'Application', 'Integration'].map((stageName, index) => {
-                    const stageNum = index + 1;
-                    const currentStage = session.meryl_stage || 1;
-                    const isCompleted = stageNum < currentStage;
-                    const isCurrent = stageNum === currentStage;
+                {['Activation', 'Demonstration', 'Application'].map((stageName, index) => {
+                  const stageNum = index + 1;
+                  const currentStage = session.meryl_stage || 1;
+                  const isCompleted = stageNum < currentStage;
+                  const isCurrent = stageNum === currentStage;
 
-                    return (
-                      <div key={stageName} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        color: isCurrent ? '#16a34a' : (isCompleted ? '#9ca3af' : '#d1d5db'),
-                        fontWeight: isCurrent ? 'bold' : 'normal'
-                      }}>
-                        <span>{stageNum}. {stageName}</span>
-                        {isCompleted && (
-                          <span style={{ color: '#16a34a' }}>✓</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                  return (
+                    <div key={stageName} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: isCurrent ? '#16a34a' : (isCompleted ? '#9ca3af' : '#d1d5db'),
+                      fontWeight: isCurrent ? 'bold' : 'normal'
+                    }}>
+                      <span>{stageNum}. {stageName}</span>
+                      {isCompleted && (
+                        <span style={{ color: '#16a34a' }}>✓</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 

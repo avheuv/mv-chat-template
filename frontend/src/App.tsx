@@ -42,6 +42,7 @@ type ChatSession = {
   messages: Message[];
   assessment_objectives?: string[];
   meryl_stage?: number;
+  meryl_turn_count?: number;
 };
 
 type AssessmentData = {
@@ -258,6 +259,27 @@ function App() {
     setInputValues(prev => ({ ...prev, [id]: value }));
   };
 
+  const handleAdvanceMeryl = async () => {
+    if (!session || loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/chat/advance-meryl`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: session.id })
+      });
+      if (!res.ok) throw new Error('Failed to advance stage');
+
+      const sessionRes = await fetch(`${API_BASE}/chat/session/${session.id}`);
+      const sessionData = await sessionRes.json();
+      setSession(sessionData);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!inputValue.trim() || !session || loading) return;
 
@@ -269,6 +291,7 @@ function App() {
     const tempId = `temp-${Date.now()}`;
     setSession({
       ...session,
+      meryl_turn_count: (session.meryl_turn_count !== undefined) ? session.meryl_turn_count + 1 : undefined,
       messages: [...session.messages, { id: tempId, role: 'user', content: userContent }]
     });
 
@@ -1236,7 +1259,9 @@ ${getSketchCoachingFocus()}`
                 justifyContent: 'center',
                 alignItems: 'center',
                 gap: '32px',
-                width: '100%',
+                width: '75%',
+                marginLeft: 'auto',
+                marginRight: 'auto',
                 backgroundColor: 'var(--panel)',
                 padding: '12px 16px',
                 borderRadius: '8px',
@@ -1267,6 +1292,25 @@ ${getSketchCoachingFocus()}`
                     </div>
                   );
                 })}
+                {(session.meryl_stage || 1) < 3 && (
+                  <button
+                    onClick={handleAdvanceMeryl}
+                    disabled={loading || (session.meryl_turn_count || 0) < 3}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '14px',
+                      backgroundColor: ((session.meryl_turn_count || 0) >= 3 && !loading) ? '#16a34a' : '#d1d5db',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: ((session.meryl_turn_count || 0) >= 3 && !loading) ? 'pointer' : 'not-allowed',
+                      transition: 'background-color 0.2s',
+                      marginLeft: '16px'
+                    }}
+                  >
+                    Next Stage
+                  </button>
+                )}
               </div>
             )}
 

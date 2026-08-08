@@ -140,6 +140,10 @@ class ChatService:
         )
         session.messages.append(user_message)
 
+        # Increment Meryl turn count
+        if prototype.ui.mode == "meryl":
+            session.meryl_turn_count += 1
+
         # Prepare messages for LLM
         # We only send system, user, and assistant roles.
         llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
@@ -257,6 +261,84 @@ class ChatService:
                     print(f"Error in save handler {prototype.saveHandler}: {e}")
             else:
                 print(f"Warning: Save handler '{prototype.saveHandler}' not found.")
+
+        # Save updated session
+        await firestore_service.set_document("sessions", session.id, session.dict())
+
+        return ChatResponse(
+            message=assistant_message,
+            structured_data=structured_data
+        )
+
+    async def advance_meryl_stage(self, session_id: str) -> ChatResponse:
+        session = await self.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        prototype = prototype_loader.get_prototype(session.prototype_id)
+        if not prototype or prototype.ui.mode != "meryl":
+            raise ValueError("Invalid prototype for this action.")
+
+        # Ensure they have had enough turns and aren't already at the end
+        if session.meryl_turn_count < 3 or session.meryl_stage >= 3:
+            raise ValueError("Cannot advance stage yet.")
+
+        # Advance stage and reset turn count
+        session.meryl_stage += 1
+        session.meryl_turn_count = 0
+
+        # Load Overrides from Firestore to get dynamic prompts
+        overrides = await firestore_service.get_prototype_overrides(
+            prototype.id, prototype.systemPrompt, prototype.model, prototype.stagePrompts
+        )
+
+        # Update System Prompt in history for the next pass
+        system_msg_index = next((i for i, m in enumerate(session.messages) if m.role == "system"), None)
+        if system_msg_index is not None and overrides.get("stagePrompts"):
+            stage_prompt = overrides["stagePrompts"].get(str(session.meryl_stage))
+            if stage_prompt:
+                bg_context = ""
+                if "--- BACKGROUND CONTEXT ---" in session.messages[system_msg_index].content:
+                    bg_context = "\n\n--- BACKGROUND CONTEXT ---\n" + session.messages[system_msg_index].content.split("--- BACKGROUND CONTEXT ---")[1].strip()
+                session.messages[system_msg_index].content = stage_prompt + bg_context
+
+        # Trigger LLM to get the transitional text now that the stage is updated
+        llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
+
+        # Inject instruction so it transitions smoothly
+        stage_names = {2: "Demonstration", 3: "Application"}
+        new_stage_name = stage_names.get(session.meryl_stage, str(session.meryl_stage))
+
+        trigger_message = Message(
+            id=str(uuid.uuid4()),
+            role="user",
+            content=f"The student is ready to move on. Please acknowledge the transition to the {new_stage_name} stage and begin the next stage of instruction."
+        )
+        session.messages.append(trigger_message)
+        llm_messages.append({"role": "user", "content": trigger_message.content})
+
+        content, structured_data, _ = await llm_service.generate_response(
+            messages=llm_messages,
+            model=overrides["model"],
+            temperature=prototype.temperature,
+            max_tokens=prototype.maxTokens,
+            output_schema=prototype.outputSpec,
+            tools=None
+        )
+
+        if not content and structured_data and "reply" in structured_data:
+            content = structured_data["reply"]
+
+        if not content:
+            content = f"Great! Let's continue to the {new_stage_name} stage."
+
+        # Append assistant message
+        assistant_message = Message(
+            id=str(uuid.uuid4()),
+            role="assistant",
+            content=content
+        )
+        session.messages.append(assistant_message)
 
         # Save updated session
         await firestore_service.set_document("sessions", session.id, session.dict())

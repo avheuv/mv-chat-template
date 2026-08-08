@@ -4,8 +4,13 @@ def run_cuj(page):
     page.goto("http://localhost:5173/?prototype=meryl")
     page.wait_for_timeout(1500)
 
-    # We will just verify the splash screen since the mock key kills the start API
-    page.screenshot(path="/home/jules/verification/screenshots/verification.png")
+    page.get_by_role("combobox").select_option(label="Quadratic Equations")
+    page.wait_for_timeout(500)
+
+    page.get_by_role("button", name="Start").click()
+    page.wait_for_timeout(2000)
+
+    page.screenshot(path="/home/jules/verification/screenshots/verification2.png")
     page.wait_for_timeout(1000)
 
 if __name__ == "__main__":

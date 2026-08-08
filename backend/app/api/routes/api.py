@@ -109,6 +109,24 @@ async def start_chat(request: ChatStartRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
 
+from pydantic import BaseModel
+
+class AdvanceMerylRequest(BaseModel):
+    session_id: str
+
+@router.post("/api/chat/advance-meryl", response_model=ChatResponse)
+async def advance_meryl(request: dict):
+    try:
+        session_id = request.get("session_id")
+        if not session_id:
+            raise ValueError("session_id is required")
+        response = await chat_service.advance_meryl_stage(session_id)
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @router.post("/api/chat/send", response_model=ChatResponse)
 async def send_chat(request: ChatSendRequest):
     try:

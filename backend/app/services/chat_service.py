@@ -169,70 +169,27 @@ class ChatService:
         # Re-build llm_messages because we might have just updated the system prompt
         llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
-        # Dynamically filter tools based on the current Meryl stage
-        active_tools = prototype.tools
-        if prototype.ui.mode == "meryl" and active_tools:
-            allowed_tool = None
-            if session.meryl_stage == 1:
-                allowed_tool = "advance_to_demonstration"
-            elif session.meryl_stage == 2:
-                allowed_tool = "advance_to_application"
+        # Inject a hidden instruction if the user just unlocked the Next Stage button
+        if prototype.ui.mode == "meryl" and getattr(session, "meryl_turn_count", 0) == 3 and session.meryl_stage < 3:
+            llm_messages.append({
+                "role": "system",
+                "content": "The student has completed enough turns in this stage. At the end of your response, explicitly let them know they can click the 'Next Stage' button below when they feel ready to move on, or they can keep practicing here."
+            })
+        elif prototype.ui.mode == "meryl" and getattr(session, "meryl_turn_count", 0) == 3 and session.meryl_stage == 3:
+             llm_messages.append({
+                "role": "system",
+                "content": "The student has completed enough turns in this final stage. At the end of your response, explicitly let them know they can click the 'End Lesson' button below to conclude the lesson."
+            })
 
-            if allowed_tool:
-                active_tools = [t for t in active_tools if t.get("function", {}).get("name") == allowed_tool]
-            else:
-                active_tools = None
-
-        # Call LLM
+        # Call LLM (Note: Meryl no longer uses tools, so we just pass what the prototype has)
         content, structured_data, tool_name_called = await llm_service.generate_response(
             messages=llm_messages,
             model=overrides["model"],
             temperature=prototype.temperature,
             max_tokens=prototype.maxTokens,
             output_schema=prototype.outputSpec,
-            tools=active_tools
+            tools=prototype.tools
         )
-
-        # Handle Meryl Tool Call for Advancing Stage
-        meryl_tools = {
-            "advance_to_demonstration": 2,
-            "advance_to_application": 3
-        }
-
-        if tool_name_called in meryl_tools and prototype.ui.mode == "meryl":
-            new_stage = meryl_tools[tool_name_called]
-            if session.meryl_stage < new_stage:
-                session.meryl_stage = new_stage
-
-                # Update System Prompt in history for the next pass
-                system_msg_index = next((i for i, m in enumerate(session.messages) if m.role == "system"), None)
-                if system_msg_index is not None and overrides.get("stagePrompts"):
-                    stage_prompt = overrides["stagePrompts"].get(str(session.meryl_stage))
-                    if stage_prompt:
-                        bg_context = ""
-                        if "--- BACKGROUND CONTEXT ---" in session.messages[system_msg_index].content:
-                            bg_context = "\n\n--- BACKGROUND CONTEXT ---\n" + session.messages[system_msg_index].content.split("--- BACKGROUND CONTEXT ---")[1].strip()
-                        session.messages[system_msg_index].content = stage_prompt + bg_context
-
-                # Trigger LLM again to get the transitional text now that the stage is updated
-                llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
-
-                # We optionally inject a hidden instruction so it transitions smoothly
-                llm_messages.append({
-                    "role": "user",
-                    "content": f"You just called {tool_name_called} and advanced the lesson stage. Please provide a brief transitional message and continue the conversation based on the new stage instructions."
-                })
-
-                # We specifically pass tools=None here to force the model to reply with text
-                # and prevent it from trying to chain another tool call immediately.
-                content, structured_data, _ = await llm_service.generate_response(
-                    messages=llm_messages,
-                    model=overrides["model"],
-                    temperature=prototype.temperature,
-                    max_tokens=prototype.maxTokens,
-                    output_schema=prototype.outputSpec,
-                    tools=None
-                )
 
         # If the output schema requires 'reply', LLM service might not populate content
         # Check if structured_data has a 'reply' string to use as the actual message content
@@ -280,7 +237,7 @@ class ChatService:
             raise ValueError("Invalid prototype for this action.")
 
         # Ensure they have had enough turns and aren't already at the end
-        if session.meryl_turn_count < 3 or session.meryl_stage >= 3:
+        if session.meryl_turn_count < 3 or session.meryl_stage > 3:
             raise ValueError("Cannot advance stage yet.")
 
         # Advance stage and reset turn count
@@ -306,16 +263,23 @@ class ChatService:
         llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
         # Inject instruction so it transitions smoothly
-        stage_names = {2: "Demonstration", 3: "Application"}
-        new_stage_name = stage_names.get(session.meryl_stage, str(session.meryl_stage))
+        if session.meryl_stage == 4:
+            trigger_content = "The student has clicked 'End Lesson'. Please provide a brief concluding message to wrap up the learning session. Congratulate them on their effort."
+            fallback_content = "Great job today! You've successfully completed the lesson. Feel free to keep chatting if you have more questions."
+        else:
+            stage_names = {2: "Demonstration", 3: "Application"}
+            new_stage_name = stage_names.get(session.meryl_stage, str(session.meryl_stage))
+            trigger_content = f"The student is ready to move on. Please acknowledge the transition to the {new_stage_name} stage and begin the next stage of instruction."
+            fallback_content = f"Great! Let's continue to the {new_stage_name} stage."
 
+        # Using role='system' ensures this specific trigger instruction is hidden from the frontend UI
         trigger_message = Message(
             id=str(uuid.uuid4()),
-            role="user",
-            content=f"The student is ready to move on. Please acknowledge the transition to the {new_stage_name} stage and begin the next stage of instruction."
+            role="system",
+            content=trigger_content
         )
         session.messages.append(trigger_message)
-        llm_messages.append({"role": "user", "content": trigger_message.content})
+        llm_messages.append({"role": "system", "content": trigger_message.content})
 
         content, structured_data, _ = await llm_service.generate_response(
             messages=llm_messages,
@@ -330,7 +294,7 @@ class ChatService:
             content = structured_data["reply"]
 
         if not content:
-            content = f"Great! Let's continue to the {new_stage_name} stage."
+            content = fallback_content
 
         # Append assistant message
         assistant_message = Message(

@@ -1259,7 +1259,7 @@ ${getSketchCoachingFocus()}`
                 justifyContent: 'center',
                 alignItems: 'center',
                 gap: '32px',
-                width: '75%',
+                width: '85%',
                 marginLeft: 'auto',
                 marginRight: 'auto',
                 backgroundColor: 'var(--panel)',
@@ -1292,10 +1292,10 @@ ${getSketchCoachingFocus()}`
                     </div>
                   );
                 })}
-                {(session.meryl_stage || 1) < 3 && (
+                {(session.meryl_stage || 1) <= 3 && (
                   <button
                     onClick={handleAdvanceMeryl}
-                    disabled={loading || (session.meryl_turn_count || 0) < 3}
+                    disabled={loading || (session.meryl_turn_count || 0) < 3 || (session.meryl_stage || 1) > 3}
                     style={{
                       padding: '6px 12px',
                       fontSize: '14px',
@@ -1308,7 +1308,7 @@ ${getSketchCoachingFocus()}`
                       marginLeft: '16px'
                     }}
                   >
-                    Next Stage
+                    {(session.meryl_stage || 1) === 3 ? 'End Lesson' : 'Next Stage'}
                   </button>
                 )}
               </div>

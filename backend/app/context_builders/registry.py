@@ -36,9 +36,9 @@ async def demo_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
     """
     lesson_code = inputs.get("lesson_code", "default")
     if lesson_code == "quadratics":
-        return "LESSON DATA:\nTopic: Introduction to Quadratic Equations\nGoal: Understand the standard form ax^2 + bx + c = 0."
+        return "LESSON DATA:\nTopic: Introduction to Quadratic Equations\nGoal: Understand the standard form ax^2 + bx + c = 0.\n\nVIDEO RESOURCE:\nTitle: Intro to Quadratics\nURL: https://example.com/quadratics"
     if lesson_code == "biology":
-        return "LESSON DATA:\nTopic: Cell Structure\nGoal: Understand the function of the mitochondria."
+        return "LESSON DATA:\nTopic: Cell Structure\nGoal: Understand the function of the mitochondria.\n\nVIDEO RESOURCE:\nTitle: The Powerhouse of the Cell\nURL: https://example.com/mitochondria"
     return "LESSON DATA:\nTopic: General Math Review\nGoal: Practice core skills."
 
 async def fetch_student_interests(inputs: Dict[str, str], session_id: str) -> str:
@@ -73,7 +73,16 @@ async def fetch_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
         if doc:
             title = doc.get("title", "Unknown Lesson")
             objectives = doc.get("objectives", "No objectives provided.")
-            return f"LESSON DATA:\nTopic: {title}\nGoal: {objectives}"
+            result_text = f"LESSON DATA:\nTopic: {title}\nGoal: {objectives}"
+
+            # Inject video resource if present
+            video = doc.get("video")
+            if video and isinstance(video, dict):
+                v_title = video.get("title", "Unknown Title")
+                v_url = video.get("url", "")
+                result_text += f"\n\nVIDEO RESOURCE:\nTitle: {v_title}\nURL: {v_url}"
+
+            return result_text
 
     # Fallback if Firestore is not available
     return await demo_lesson_data(inputs, session_id)

@@ -22,8 +22,8 @@ async def _seed_lesson_topics_if_empty():
     if not collection:
         # Seed default topics
         defaults = [
-            {"id": "quadratics", "title": "Quadratic Equations", "objectives": "Understand the standard form ax^2 + bx + c = 0."},
-            {"id": "biology", "title": "Cell Structure", "objectives": "Understand the function of the mitochondria."},
+            {"id": "quadratics", "title": "Quadratic Equations", "objectives": "Understand the standard form ax^2 + bx + c = 0.", "video": {"title": "Intro to Quadratics", "url": "https://example.com/quadratics"}},
+            {"id": "biology", "title": "Cell Structure", "objectives": "Understand the function of the mitochondria.", "video": {"title": "The Powerhouse of the Cell", "url": "https://example.com/mitochondria"}},
             {"id": "default", "title": "General Math", "objectives": "Practice core skills."}
         ]
         for item in defaults:

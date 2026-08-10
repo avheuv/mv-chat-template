@@ -31,7 +31,7 @@ initialMessagePrompt: |
   Please greet the student and ask the first assessment question to activate their prior knowledge.
 model: gpt-4o
 temperature: 0.5
-maxTokens: 1000
+maxTokens: 10000
 ui:
   title: Guided Learning Bot
   subtitle: Select a lesson to begin a guided conversation with your AI tutor

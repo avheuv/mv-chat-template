@@ -22,6 +22,7 @@ class PrototypeUIConfig(BaseModel):
     placeholder: str = "Type your message..."
     readonly: bool = False
     mode: str = "chat"
+    glassbox: bool = False
     inputs: List[UIInputConfig] = Field(default_factory=lambda: [UIInputConfig(id="user_id", label="Student Code")])
 
 class PrototypeConfig(BaseModel):
@@ -38,6 +39,7 @@ class PrototypeConfig(BaseModel):
     outputSpec: Optional[Dict[str, Any]] = None
     tools: Optional[List[Dict[str, Any]]] = None
     saveHandler: Optional[str] = None
+    reasoning: Optional[Dict[str, Any]] = None
     ui: PrototypeUIConfig = Field(default_factory=PrototypeUIConfig)
 
 class PrototypeLoader:

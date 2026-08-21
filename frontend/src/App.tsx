@@ -24,7 +24,8 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
-    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl';
+    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment';
+    glassbox?: boolean;
     inputs: UIInputConfig[];
   }
 };
@@ -33,6 +34,7 @@ type Message = {
   id: string;
   role: 'system' | 'user' | 'assistant';
   content: string;
+  reasoning_summary?: string;
 };
 
 type ChatSession = {
@@ -101,7 +103,7 @@ function App() {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
 
   // The state machine for our 3 pages
-  const [view, setView] = useState<'landing' | 'splash' | 'chat'>('landing');
+  const [view, setView] = useState<'landing' | 'splash' | 'chat' | 'glassbox'>('landing');
 
   const [session, setSession] = useState<ChatSession | null>(null);
   const [loading, setLoading] = useState(false);
@@ -180,7 +182,14 @@ function App() {
         const params = new URLSearchParams(window.location.search);
         const urlPrototype = params.get('prototype');
 
-        if (urlPrototype && data.find((p: Prototype) => p.id === urlPrototype)) {
+        const urlView = params.get('view');
+        const urlSessionId = params.get('session_id');
+
+        if (urlView === 'glassbox' && urlSessionId) {
+          setView('glassbox');
+          // Start polling for this session
+          pollSession(urlSessionId);
+        } else if (urlPrototype && data.find((p: Prototype) => p.id === urlPrototype)) {
           setSelectedPrototypeId(urlPrototype);
           setView('splash');
         } else if (data.length > 0) {
@@ -190,6 +199,19 @@ function App() {
       })
       .catch(() => setError('Failed to load prototypes. Ensure backend is running.'));
   }, []);
+
+  const pollSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/chat/session/${sessionId}`);
+      if (res.ok) {
+        const sessionData = await res.json();
+        setSession(sessionData);
+      }
+    } catch (e) {
+      console.error("Failed to poll session:", e);
+    }
+    setTimeout(() => pollSession(sessionId), 3000);
+  };
 
   const handleOpenSplash = () => {
     // Navigate via query param so the user has a shareable link
@@ -245,7 +267,20 @@ function App() {
       if (!res.ok) throw new Error('Failed to start session');
       const data = await res.json();
       resetVoiceConnection();
-      setAssessmentData(null);
+
+      // Initialize score bar for Gauge with Glassbox (or any assessment)
+      const currentPrototype = prototypes.find(p => p.id === selectedPrototypeId);
+      if (currentPrototype?.ui.glassbox || currentPrototype?.ui.mode === 'chat_based_assessment') {
+         setAssessmentData({
+           sub_objective_scores: [0, 0, 0],
+           current_sub_objective_index: 0,
+           summary: '',
+           tip: ''
+         });
+      } else {
+         setAssessmentData(null);
+      }
+
       setSession(data);
       setView('chat');
     } catch (e: unknown) {
@@ -997,6 +1032,58 @@ ${getSketchCoachingFocus()}`
     );
   }
 
+  // Helper to convert OpenAI's default LaTeX delimiters to standard Markdown ones for remark-math
+  const processMathDelimiters = (text: string) => {
+    if (!text) return text;
+    return text
+      .replace(/\\\[/g, '$$$$')
+      .replace(/\\\]/g, '$$$$')
+      .replace(/\\\(/g, '$')
+      .replace(/\\\)/g, '$');
+  };
+
+  if (view === 'glassbox') {
+    if (!session) return (
+      <div className="act-app-shell">
+        <div className="act-app-header">
+          <div className="act-brand">GlassBox</div>
+        </div>
+        <main className="act-main">
+          <div style={{ textAlign: 'center', marginTop: '40px' }}>Loading GlassBox Session...</div>
+        </main>
+      </div>
+    );
+
+    return (
+      <div className="act-app-shell">
+        <div className="act-app-header">
+          <div className="act-brand">GlassBox</div>
+        </div>
+        <main className="act-main relative">
+          <div className="act-chat-messages" style={{ paddingBottom: '40px' }}>
+            {session.messages.filter(m => m.role === 'assistant' && m.reasoning_summary).map(m => (
+              <div key={m.id} className="act-message-row act-message-row-assistant">
+                <div className="act-bubble act-bubble-assistant markdown-content" style={{ backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '12px', color: '#6b7280' }}>REASONING SUMMARY</div>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                  >
+                    {processMathDelimiters(m.reasoning_summary!)}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            ))}
+            {session.messages.filter(m => m.role === 'assistant' && m.reasoning_summary).length === 0 && (
+              <div style={{ textAlign: 'center', marginTop: '40px', color: '#6b7280' }}>Waiting for reasoning summaries...</div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (view === 'splash' && activePrototypeUI) {
     return (
       <div className="act-app-shell">
@@ -1049,16 +1136,6 @@ ${getSketchCoachingFocus()}`
 
   // Chat View
   if (!session) return null;
-
-  // Helper to convert OpenAI's default LaTeX delimiters to standard Markdown ones for remark-math
-  const processMathDelimiters = (text: string) => {
-    if (!text) return text;
-    return text
-      .replace(/\\\[/g, '$$$$')
-      .replace(/\\\]/g, '$$$$')
-      .replace(/\\\(/g, '$')
-      .replace(/\\\)/g, '$');
-  };
 
   if (isVoiceAssessment || isSketch) {
     const statusLabel = {
@@ -1391,10 +1468,18 @@ ${getSketchCoachingFocus()}`
                   </span>
                 </div>
 
-                {assessmentData.tip && (
-                  <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Tip:</span> {assessmentData.tip}
+                {activePrototypeUI?.glassbox ? (
+                  <div style={{ fontSize: '12px', color: '#1E3A8A', marginTop: '4px' }}>
+                    <a href={`?view=glassbox&session_id=${session.id}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline', color: 'inherit' }}>
+                      Open GlassBox to view the model's reasoning.
+                    </a>
                   </div>
+                ) : (
+                  assessmentData.tip && (
+                    <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+                      <span style={{ fontWeight: 'bold' }}>Tip:</span> {assessmentData.tip}
+                    </div>
+                  )
                 )}
               </div>
             )}

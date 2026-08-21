@@ -13,20 +13,85 @@ class LLMService:
         temperature: float = 0.7,
         max_tokens: int = 1000,
         output_schema: Optional[Dict[str, Any]] = None,
-        tools: Optional[List[Dict[str, Any]]] = None
-    ) -> tuple[str, Optional[Dict[str, Any]], Optional[str]]:
+        tools: Optional[List[Dict[str, Any]]] = None,
+        reasoning: Optional[Dict[str, Any]] = None
+    ) -> tuple[str, Optional[Dict[str, Any]], Optional[str], Optional[str]]:
         """
         Generates a response from the LLM.
-        Returns: (content_string, structured_data_dict, tool_name_called)
+        Returns: (content_string, structured_data_dict, tool_name_called, reasoning_summary)
         """
+        is_reasoning_model = any(model.startswith(prefix) for prefix in ["o1", "o3", "gpt-5"])
+
+        # Responses API logic for newer reasoning models
+        if is_reasoning_model and model.startswith("gpt-5"):
+            params = {
+                "model": model,
+                "input": messages,
+                "max_output_tokens": max_tokens
+            }
+            if reasoning:
+                params["reasoning"] = reasoning
+
+            if output_schema:
+                params["tools"] = [{
+                    "type": "function",
+                    "name": "save_structured_data",
+                    "description": "Saves the extracted structured data. Call this when you have gathered all required information.",
+                    "parameters": output_schema
+                }]
+            elif tools:
+                # The Responses API uses slightly different tool structures.
+                # Converting generic tools might be necessary, but assuming they match for now.
+                params["tools"] = tools
+
+            try:
+                response = await client.responses.create(**params)
+
+                content = ""
+                structured_data = None
+                tool_name_called = None
+                reasoning_summary = None
+
+                for item in response.output:
+                    if item.type == "reasoning":
+                        # Extract reasoning summary
+                        if hasattr(item, "summary") and item.summary:
+                            summaries = []
+                            for summary_block in item.summary:
+                                if summary_block.type == "summary_text":
+                                    summaries.append(summary_block.text)
+                            reasoning_summary = "\n".join(summaries)
+                    elif item.type == "message" and item.role == "assistant":
+                        if hasattr(item, "content") and item.content:
+                            for block in item.content:
+                                if block.type == "output_text":
+                                    content += block.text
+                    elif item.type == "function_call":
+                        tool_name_called = item.name
+                        try:
+                            parsed_args = json.loads(item.arguments)
+                            structured_data = parsed_args
+                        except json.JSONDecodeError:
+                            print("Warning: Failed to parse tool arguments.")
+
+                if not content and structured_data:
+                    if "reply" in structured_data:
+                        content = ""
+                    else:
+                        content = "I have successfully saved your information!"
+
+                return content, structured_data, tool_name_called, reasoning_summary
+
+            except Exception as e:
+                print(f"Error calling LLM (Responses API): {e}")
+                raise
+
+
+        # Original Chat Completions logic for older models
         params = {
             "model": model,
             "messages": messages
         }
-
-        # Newer reasoning models (o1, o3, and likely gpt-5+) do not support 'max_tokens'
-        # (they use 'max_completion_tokens' instead) and often reject 'temperature' entirely.
-        is_reasoning_model = any(model.startswith(prefix) for prefix in ["o1", "o3", "gpt-5"])
 
         if is_reasoning_model:
             params["max_completion_tokens"] = max_tokens
@@ -35,8 +100,6 @@ class LLMService:
             params["max_tokens"] = max_tokens
 
         if output_schema:
-            # We use tool calling instead of response_format so the AI can still
-            # talk conversationally while deciding when to trigger the save action.
             params["tools"] = [{
                 "type": "function",
                 "function": {
@@ -57,6 +120,7 @@ class LLMService:
 
             structured_data = None
             tool_name_called = None
+            reasoning_summary = None
 
             if message.tool_calls:
                 # If the AI decided to call the tool
@@ -81,7 +145,7 @@ class LLMService:
                 else:
                     content = "I have successfully saved your information!"
 
-            return content, structured_data, tool_name_called
+            return content, structured_data, tool_name_called, reasoning_summary
 
         except Exception as e:
             print(f"Error calling LLM: {e}")

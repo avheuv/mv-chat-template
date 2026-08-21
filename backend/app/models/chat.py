@@ -6,6 +6,7 @@ class Message(BaseModel):
     id: str
     role: str
     content: str
+    reasoning_summary: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
 class ChatSession(BaseModel):

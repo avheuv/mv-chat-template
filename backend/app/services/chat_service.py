@@ -10,6 +10,9 @@ from app.context_builders.registry import registry as context_registry
 from app.save_handlers.registry import registry as save_registry
 
 class ChatService:
+    def __init__(self):
+        self._local_sessions: Dict[str, ChatSession] = {}
+
     async def start_session(self, request: ChatStartRequest) -> ChatSession:
         prototype = prototype_loader.get_prototype(request.prototype_id)
         if not prototype:
@@ -89,13 +92,14 @@ class ChatService:
             llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
 
             # Call LLM
-            content, structured_data, _ = await llm_service.generate_response(
+            content, structured_data, _, reasoning_summary = await llm_service.generate_response(
                 messages=llm_messages,
                 model=model_to_use,
                 temperature=prototype.temperature,
                 max_tokens=prototype.maxTokens,
                 output_schema=prototype.outputSpec,
-                tools=prototype.tools
+                tools=prototype.tools,
+                reasoning=prototype.reasoning
             )
 
             # Remove the hidden trigger prompt so the user never sees it in the chat history
@@ -108,11 +112,13 @@ class ChatService:
             assistant_greeting = Message(
                 id=str(uuid.uuid4()),
                 role="assistant",
-                content=content
+                content=content,
+                reasoning_summary=reasoning_summary
             )
             session.messages.append(assistant_greeting)
 
-        # Save session to Firestore
+        # Save session to Firestore (and locally for fallback)
+        self._local_sessions[session_id] = session
         await firestore_service.set_document("sessions", session_id, session.dict())
 
         return session
@@ -121,7 +127,7 @@ class ChatService:
         data = await firestore_service.get_document("sessions", session_id)
         if data:
             return ChatSession(**data)
-        return None
+        return self._local_sessions.get(session_id)
 
     async def send_message(self, request: ChatSendRequest) -> ChatResponse:
         session = await self.get_session(request.session_id)
@@ -182,13 +188,14 @@ class ChatService:
             })
 
         # Call LLM (Note: Meryl no longer uses tools, so we just pass what the prototype has)
-        content, structured_data, tool_name_called = await llm_service.generate_response(
+        content, structured_data, tool_name_called, reasoning_summary = await llm_service.generate_response(
             messages=llm_messages,
             model=overrides["model"],
             temperature=prototype.temperature,
             max_tokens=prototype.maxTokens,
             output_schema=prototype.outputSpec,
-            tools=prototype.tools
+            tools=prototype.tools,
+            reasoning=prototype.reasoning
         )
 
         # If the output schema requires 'reply', LLM service might not populate content
@@ -203,7 +210,8 @@ class ChatService:
         assistant_message = Message(
             id=str(uuid.uuid4()),
             role="assistant",
-            content=content
+            content=content,
+            reasoning_summary=reasoning_summary
         )
         session.messages.append(assistant_message)
 
@@ -220,6 +228,8 @@ class ChatService:
                 print(f"Warning: Save handler '{prototype.saveHandler}' not found.")
 
         # Save updated session
+        self._local_sessions[session.id] = session
+        self._local_sessions[session.id] = session
         await firestore_service.set_document("sessions", session.id, session.dict())
 
         return ChatResponse(
@@ -281,13 +291,14 @@ class ChatService:
         session.messages.append(trigger_message)
         llm_messages.append({"role": "system", "content": trigger_message.content})
 
-        content, structured_data, _ = await llm_service.generate_response(
+        content, structured_data, _, reasoning_summary = await llm_service.generate_response(
             messages=llm_messages,
             model=overrides["model"],
             temperature=prototype.temperature,
             max_tokens=prototype.maxTokens,
             output_schema=prototype.outputSpec,
-            tools=None
+            tools=None,
+            reasoning=prototype.reasoning
         )
 
         if not content and structured_data and "reply" in structured_data:
@@ -300,7 +311,8 @@ class ChatService:
         assistant_message = Message(
             id=str(uuid.uuid4()),
             role="assistant",
-            content=content
+            content=content,
+            reasoning_summary=reasoning_summary
         )
         session.messages.append(assistant_message)
 

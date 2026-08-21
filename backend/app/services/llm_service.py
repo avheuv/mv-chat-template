@@ -6,6 +6,27 @@ from typing import List, Dict, Any, Optional
 client = AsyncOpenAI(api_key=settings.openai_api_key)
 
 class LLMService:
+    async def generate_primary_misconception(self, lesson_context: str) -> str:
+        """Identify one misconception before the tutoring conversation begins."""
+        response = await client.responses.create(
+            model="gpt-5.4",
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert in learning science and subject-matter pedagogy. "
+                        "Identify the single primary misconception students commonly hold about "
+                        "the supplied lesson topic. Be specific and concise. Explain the mistaken "
+                        "belief and the correct conceptual distinction in no more than 100 words."
+                    )
+                },
+                {"role": "user", "content": lesson_context}
+            ],
+            reasoning={"effort": "high", "summary": "detailed"},
+            max_output_tokens=500
+        )
+        return response.output_text.strip()
+
     async def generate_response(
         self,
         messages: List[Dict[str, str]],

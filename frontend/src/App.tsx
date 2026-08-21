@@ -26,6 +26,7 @@ type Prototype = {
     readonly: boolean;
     mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment';
     glassbox?: boolean;
+    inlineReasoning?: boolean;
     inputs: UIInputConfig[];
   }
 };
@@ -1293,8 +1294,19 @@ ${getSketchCoachingFocus()}`
         )}
         <div className="act-chat-messages" style={{ paddingBottom: `${composerHeight + 20}px` }}>
           {session.messages.filter(m => m.role !== 'system').map(m => (
-            <div key={m.id} className={`act-message-row act-message-row-${m.role}`}>
-              <div className={`act-bubble act-bubble-${m.role} markdown-content`}>
+            <div key={m.id} className="act-message-group">
+              {m.role === 'assistant' && activePrototypeUI?.inlineReasoning && m.reasoning_summary && (
+                <div className="act-message-row act-message-row-assistant">
+                  <div className="act-bubble act-bubble-reasoning markdown-content">
+                    <div className="act-reasoning-label">REASONING SUMMARY</div>
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {processMathDelimiters(m.reasoning_summary)}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              )}
+              <div className={`act-message-row act-message-row-${m.role}`}>
+                <div className={`act-bubble act-bubble-${m.role} markdown-content`}>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
@@ -1306,6 +1318,7 @@ ${getSketchCoachingFocus()}`
                 >
                   {processMathDelimiters(m.content)}
                 </ReactMarkdown>
+                </div>
               </div>
             </div>
           ))}

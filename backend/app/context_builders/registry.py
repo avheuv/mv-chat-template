@@ -87,8 +87,17 @@ async def fetch_lesson_data(inputs: Dict[str, str], session_id: str) -> str:
     # Fallback if Firestore is not available
     return await demo_lesson_data(inputs, session_id)
 
+async def identify_primary_misconception(inputs: Dict[str, str], session_id: str) -> str:
+    """Use GPT-5.4 to identify the most instructionally important misconception."""
+    from app.services.llm_service import llm_service
+
+    lesson_data = await fetch_lesson_data(inputs, session_id)
+    misconception = await llm_service.generate_primary_misconception(lesson_data)
+    return f"PRIMARY MISCONCEPTION (MODEL-IDENTIFIED):\n{misconception}"
+
 # Register them
 registry.register("demoUserProfile", demo_user_profile)
 registry.register("demoLessonData", demo_lesson_data)
 registry.register("fetchStudentInterests", fetch_student_interests)
 registry.register("fetchLessonData", fetch_lesson_data)
+registry.register("identifyPrimaryMisconception", identify_primary_misconception)

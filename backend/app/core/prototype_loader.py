@@ -23,6 +23,7 @@ class PrototypeUIConfig(BaseModel):
     readonly: bool = False
     mode: str = "chat"
     glassbox: bool = False
+    inlineReasoning: bool = False
     inputs: List[UIInputConfig] = Field(default_factory=lambda: [UIInputConfig(id="user_id", label="Student Code")])
 
 class PrototypeConfig(BaseModel):

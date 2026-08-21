@@ -144,7 +144,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (view === 'chat') {
+    if (view === 'chat' || view === 'glassbox') {
       scrollToBottom();
     }
   }, [session?.messages, loading, view]);
@@ -187,8 +187,11 @@ function App() {
 
         if (urlView === 'glassbox' && urlSessionId) {
           setView('glassbox');
-          // Start polling for this session
-          pollSession(urlSessionId);
+          // Initial fetch
+          fetch(`${API_BASE}/chat/session/${urlSessionId}`)
+            .then(res => res.json())
+            .then(sessionData => setSession(sessionData))
+            .catch(e => console.error("Failed to fetch session:", e));
         } else if (urlPrototype && data.find((p: Prototype) => p.id === urlPrototype)) {
           setSelectedPrototypeId(urlPrototype);
           setView('splash');
@@ -200,18 +203,29 @@ function App() {
       .catch(() => setError('Failed to load prototypes. Ensure backend is running.'));
   }, []);
 
-  const pollSession = async (sessionId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/chat/session/${sessionId}`);
-      if (res.ok) {
-        const sessionData = await res.json();
-        setSession(sessionData);
+  // Polling effect for glassbox view
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval>;
+    if (view === 'glassbox') {
+      const urlSessionId = new URLSearchParams(window.location.search).get('session_id');
+      if (urlSessionId) {
+        intervalId = setInterval(async () => {
+          try {
+            const res = await fetch(`${API_BASE}/chat/session/${urlSessionId}`);
+            if (res.ok) {
+              const sessionData = await res.json();
+              setSession(sessionData);
+            }
+          } catch (e) {
+            console.error("Failed to poll session:", e);
+          }
+        }, 3000);
       }
-    } catch (e) {
-      console.error("Failed to poll session:", e);
     }
-    setTimeout(() => pollSession(sessionId), 3000);
-  };
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [view]);
 
   const handleOpenSplash = () => {
     // Navigate via query param so the user has a shareable link

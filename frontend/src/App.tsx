@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { GEOMETRY_DRAWING_TASKS } from './geometryTasks';
+import { SKETCH_GEOMETRY_DRAWINGS } from './geometryTasks';
 
 // Use environment variable for production, fallback to local dev server
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -447,10 +447,10 @@ function App() {
     return topicDetails.join('-').trim() || fullTopicTitle.trim();
   };
 
-  const getSketchQuestion = () => GEOMETRY_DRAWING_TASKS[geometryDrawingIndex] || 'All drawings complete!';
+  const getSketchQuestion = () => SKETCH_GEOMETRY_DRAWINGS[geometryDrawingIndex] || 'All drawings complete!';
 
   const getSketchCoachingFocus = () => [
-    `The student is working on drawing ${geometryDrawingIndex + 1} of ${GEOMETRY_DRAWING_TASKS.length}: ${getSketchQuestion()}`,
+    `The student is working on drawing ${geometryDrawingIndex + 1} of ${SKETCH_GEOMETRY_DRAWINGS.length}: ${getSketchQuestion()}`,
     'Evaluate only the current drawing. Look for clear visual evidence that every requested geometric property is present.',
     'If a property is missing or ambiguous, give one concise hint and do not advance.',
     'Only when the drawing visibly satisfies every property, call mark_geometry_drawing_complete with the current zero-based drawing_index. Never advance based only on the student saying it is correct.'
@@ -712,7 +712,7 @@ ${getSketchCoachingFocus()}`
       dc.send(JSON.stringify({
         type: 'response.create',
         response: {
-          instructions: `Continue drawing ${currentIndex + 1}: "${GEOMETRY_DRAWING_TASKS[currentIndex]}" Give one short hint and do not advance.`
+          instructions: `Continue drawing ${currentIndex + 1}: "${SKETCH_GEOMETRY_DRAWINGS[currentIndex]}" Give one short hint and do not advance.`
         }
       }));
       return;
@@ -732,13 +732,13 @@ ${getSketchCoachingFocus()}`
       }
     }));
 
-    const allComplete = nextIndex >= GEOMETRY_DRAWING_TASKS.length;
+    const allComplete = nextIndex >= SKETCH_GEOMETRY_DRAWINGS.length;
     dc.send(JSON.stringify({
       type: 'response.create',
       response: {
         instructions: allComplete
           ? 'All five drawings are complete. Congratulate the student warmly and do not assign another drawing.'
-          : `Briefly confirm the previous drawing succeeded. Then introduce drawing ${nextIndex + 1} of ${GEOMETRY_DRAWING_TASKS.length}: "${GEOMETRY_DRAWING_TASKS[nextIndex]}" Do not describe how to draw it unless the student asks for a hint.`
+          : `Briefly confirm the previous drawing succeeded. Then introduce drawing ${nextIndex + 1} of ${SKETCH_GEOMETRY_DRAWINGS.length}: "${SKETCH_GEOMETRY_DRAWINGS[nextIndex]}" Do not describe how to draw it unless the student asks for a hint.`
       }
     }));
   };
@@ -1305,9 +1305,9 @@ ${getSketchCoachingFocus()}`
           {isSketch ? (
             <section className="act-sketch-dock act-card">
               <div className="act-sketch-task" aria-live="polite">
-                {geometryDrawingIndex < GEOMETRY_DRAWING_TASKS.length ? (
+                {geometryDrawingIndex < SKETCH_GEOMETRY_DRAWINGS.length ? (
                   <>
-                    <span>Drawing {geometryDrawingIndex + 1} of {GEOMETRY_DRAWING_TASKS.length}</span>
+                    <span>Drawing {geometryDrawingIndex + 1} of {SKETCH_GEOMETRY_DRAWINGS.length}</span>
                     <h2>{topicTitle}</h2>
                     <p>Draw the figure, then push to talk and explain how it meets the requested properties.</p>
                   </>

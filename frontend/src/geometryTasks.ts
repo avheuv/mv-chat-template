@@ -1,4 +1,4 @@
-export const GEOMETRY_DRAWING_TASKS = [
+export const SKETCH_GEOMETRY_DRAWINGS = [
   'Draw a triangle with one obtuse angle.',
   'Draw two parallel lines cut by a transversal.',
   'Draw two perpendicular lines and mark the right angle.',

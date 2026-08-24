@@ -179,15 +179,35 @@ async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
         }
     ]
 
+    geometry_tools = [
+        {
+            "type": "function",
+            "name": "mark_geometry_drawing_complete",
+            "description": "Advance to the next geometry drawing only after the current canvas visibly satisfies every requested property.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "drawing_index": {"type": "integer", "minimum": 0, "maximum": 4},
+                    "evidence": {"type": "string", "description": "Brief visual evidence that all requested properties are present."}
+                },
+                "required": ["drawing_index", "evidence"],
+                "additionalProperties": False
+            }
+        }
+    ]
+
+    realtime_tools = assessment_tools if prototype.ui.mode == "voice_assessment" else geometry_tools
+
     session_config = {
         "session": {
             "type": "realtime",
             "model": model_to_use,
             "instructions": instructions,
             "audio": {
+                "input": {"turn_detection": None},
                 "output": {"voice": "marin"}
             },
-            "tools": assessment_tools if prototype.ui.mode == "voice_assessment" else [],
+            "tools": realtime_tools,
             "tool_choice": "auto"
         }
     }

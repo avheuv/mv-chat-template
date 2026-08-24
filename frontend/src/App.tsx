@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex';
 
 // Use environment variable for production, fallback to local dev server
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const COORDINATE_PLANE_URL = '/coordinate-plane.svg';
 
 const GEOMETRY_DRAWING_TASKS = [
   'Draw a triangle with one obtuse angle.',
@@ -147,6 +148,7 @@ function App() {
   const completedToolCallIdsRef = useRef<Set<string>>(new Set());
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const coordinatePlaneImageRef = useRef<HTMLImageElement | null>(null);
   const isDrawingRef = useRef(false);
   const [penColor, setPenColor] = useState<PenColor>('black');
   const [geometryDrawingIndex, setGeometryDrawingIndex] = useState(0);
@@ -418,6 +420,13 @@ function App() {
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   }, [view, isSketch]);
+
+  useEffect(() => {
+    const image = new Image();
+    image.src = COORDINATE_PLANE_URL;
+    coordinatePlaneImageRef.current = image;
+    return () => { coordinatePlaneImageRef.current = null; };
+  }, []);
 
   const getSelectedLessonTopicTitle = () => {
     const lessonTopicInput = activePrototypeUI?.inputs.find(input => input.id === 'lesson_code' || input.label.toLowerCase().includes('topic'));
@@ -737,7 +746,7 @@ ${getSketchCoachingFocus()}`
           },
           {
             type: 'input_image',
-            image_url: canvasRef.current.toDataURL('image/png')
+            image_url: buildSketchSnapshot()
           }
         ]
       }
@@ -767,7 +776,8 @@ ${getSketchCoachingFocus()}`
     const rect = canvas.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
     const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
-    context.strokeStyle = penColor === 'erase' ? '#ffffff' : penColor;
+    context.globalCompositeOperation = penColor === 'erase' ? 'destination-out' : 'source-over';
+    context.strokeStyle = penColor === 'erase' ? '#000000' : penColor;
     context.lineWidth = penColor === 'erase' ? 28 : 5;
     context.lineCap = 'round';
     context.lineJoin = 'round';
@@ -777,6 +787,8 @@ ${getSketchCoachingFocus()}`
 
   const handlePointerUpCanvas = (event: React.PointerEvent<HTMLCanvasElement>) => {
     isDrawingRef.current = false;
+    const context = canvasRef.current?.getContext('2d');
+    if (context) context.globalCompositeOperation = 'source-over';
     canvasRef.current?.releasePointerCapture(event.pointerId);
   };
 
@@ -785,8 +797,6 @@ ${getSketchCoachingFocus()}`
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
   };
 
   const handlePushToTalkStart = () => {

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="448" height="448" viewBox="0 0 448 448">
+<rect width="448" height="448" fill="white"/>
+<g stroke="#b3d3f2" stroke-width="2">
+<path d="M22 29V419 M20 29H418"/>
+<path d="M50 29V419 M20 57H418"/>
+<path d="M78 29V419 M20 85H418"/>
+<path d="M106 29V419 M20 113H418"/>
+<path d="M134 29V419 M20 141H418"/>
+<path d="M162 29V419 M20 169H418"/>
+<path d="M190 29V419 M20 197H418"/>
+<path d="M218 29V419 M20 225H418"/>
+<path d="M246 29V419 M20 253H418"/>
+<path d="M274 29V419 M20 281H418"/>
+<path d="M302 29V419 M20 309H418"/>
+<path d="M330 29V419 M20 337H418"/>
+<path d="M358 29V419 M20 365H418"/>
+<path d="M386 29V419 M20 393H418"/>
+<path d="M414 29V419 M20 421H418"/>
+</g>
+<g stroke="#252525" stroke-width="2">
+<path d="M0 225H438"/><path d="M218 9V440"/>
+</g>
+<g fill="#252525"><path d="M0 225l12-8v16z"/><path d="M438 225l-12-8v16z"/><path d="M218 9l-7 12h14z"/><path d="M218 440l-7-12h14z"/></g>
+<g fill="#252525" font-family="Arial, sans-serif" font-size="18" text-anchor="middle">
+<text x="50" y="250">-6</text>
+<text x="78" y="250">-5</text>
+<text x="106" y="250">-4</text>
+<text x="134" y="250">-3</text>
+<text x="162" y="250">-2</text>
+<text x="190" y="250">-1</text>
+<text x="246" y="250">1</text>
+<text x="274" y="250">2</text>
+<text x="302" y="250">3</text>
+<text x="330" y="250">4</text>
+<text x="358" y="250">5</text>
+<text x="386" y="250">6</text>
+<text x="207" y="242">0</text>
+</g><g fill="#252525" font-family="Arial, sans-serif" font-size="18" text-anchor="end">
+<text x="208" y="399">-6</text>
+<text x="208" y="371">-5</text>
+<text x="208" y="343">-4</text>
+<text x="208" y="315">-3</text>
+<text x="208" y="287">-2</text>
+<text x="208" y="259">-1</text>
+<text x="208" y="203">1</text>
+<text x="208" y="175">2</text>
+<text x="208" y="147">3</text>
+<text x="208" y="119">4</text>
+<text x="208" y="91">5</text>
+<text x="208" y="63">6</text>
+</g>
+<g fill="#252525" font-family="Georgia, serif" font-size="18" font-style="italic"><text x="432" y="248">x</text><text x="198" y="17">y</text></g>
+</svg>

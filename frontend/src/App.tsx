@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex';
 
 // Use environment variable for production, fallback to local dev server
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const COORDINATE_PLANE_URL = '/coordinate-plane.svg';
 
 type UIInputConfig = {
   id: string;
@@ -134,6 +135,7 @@ function App() {
   const completedToolCallIdsRef = useRef<Set<string>>(new Set());
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const coordinatePlaneImageRef = useRef<HTMLImageElement | null>(null);
   const isDrawingRef = useRef(false);
   const [penColor, setPenColor] = useState<PenColor>('black');
 
@@ -396,12 +398,15 @@ function App() {
   useEffect(() => {
     if (view !== 'chat' || !isSketch || !canvasRef.current) return;
 
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    canvasRef.current.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   }, [view, isSketch]);
+
+  useEffect(() => {
+    const image = new Image();
+    image.src = COORDINATE_PLANE_URL;
+    coordinatePlaneImageRef.current = image;
+    return () => { coordinatePlaneImageRef.current = null; };
+  }, []);
 
   const getSelectedLessonTopicTitle = () => {
     const lessonTopicInput = activePrototypeUI?.inputs.find(input => input.id === 'lesson_code' || input.label.toLowerCase().includes('topic'));
@@ -425,21 +430,16 @@ function App() {
     const selectedValue = getSketchQuestionValue();
     return questionInput?.options?.find(option => option.value === selectedValue)?.label
       || selectedValue
-      || 'Why do the seasons occur on Earth?';
+      || 'y = 2x + 1';
   };
 
-  const getSketchCoachingFocus = () => {
-    if (getSketchQuestionValue() === 'function_shapes_xy_plane') {
-      return [
-        'This is a high school math sketching task about function shapes on an XY coordinate plane.',
-        'Start by asking the student to sketch the function shapes on axes and explain what each curve represents.',
-        'Evaluate the drawing against the explanation: look for correctly labeled axes, a straight line for a linear function, U-shaped parabola for a quadratic, J-shaped rapid growth or decay for an exponential, and V-shape for an absolute value function.',
-        'Coach with short questions about intercepts, slope, vertex, curvature, symmetry, and growth patterns. Do not simply draw or list the correct answer for the student.'
-      ].join('\n');
-    }
-
-    return 'This is a high school science sketching task about Earth’s seasons. Focus on axial tilt, sunlight angle, day length, orbit position, and the common distance-from-the-Sun misconception.';
-  };
+  const getSketchCoachingFocus = () => [
+    'This is a graphing practice task. The supplied coordinate plane is part of every canvas image.',
+    `Evaluate the student’s graph of ${getSketchQuestion()} against the printed grid and axes.`,
+    'Pay close attention to where the student’s marks overlap the coordinate plane: estimate coordinates from the grid, not merely the overall shape.',
+    'Check the features appropriate to the function, including slope and y-intercept for a line, and vertex, axis of symmetry, intercepts, opening direction, and width for a quadratic.',
+    'If the graph is not yet correct, identify one feature to reconsider without drawing the answer for the student.'
+  ].join('\n');
 
   const getVoiceLessonContext = () => {
     const systemContent = session?.messages.find(message => message.role === 'system')?.content || '';
@@ -451,10 +451,10 @@ function App() {
   const buildInitialVoiceInstructions = () => {
     if (isSketch) {
       return [
-        'You are SKETCH, a realtime drawing coach for a high school science student.',
+        'You are SKETCH, a realtime graphing coach for an algebra student.',
         `Question: ${getSketchQuestion()}`,
-        'The student will draw on a whiteboard and explain their thinking aloud. Use both the latest canvas image and the spoken explanation.',
-        'Your goal is to help the student make an accurate, realistic drawing and explanation for a high school level.',
+        'The student will draw over a fixed coordinate plane and explain their thinking aloud. Use both the complete canvas image and the spoken explanation.',
+        'Your goal is to help the student graph the selected function accurately.',
         'Do not score the student. Do not save anything. Do not give the answer or tell the student exactly what to draw.',
         'Respond only with one short coaching question, probing question, or hint. Keep it warm and concise.',
         `Selected prompt coaching focus:
@@ -670,6 +670,34 @@ ${getSketchCoachingFocus()}`
     }));
   };
 
+  const buildSketchSnapshot = () => {
+    const drawingCanvas = canvasRef.current;
+    if (!drawingCanvas) return '';
+
+    const snapshotCanvas = document.createElement('canvas');
+    snapshotCanvas.width = drawingCanvas.width;
+    snapshotCanvas.height = drawingCanvas.height;
+    const context = snapshotCanvas.getContext('2d');
+    if (!context) return drawingCanvas.toDataURL('image/png');
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, snapshotCanvas.width, snapshotCanvas.height);
+
+    const coordinatePlane = coordinatePlaneImageRef.current;
+    if (coordinatePlane?.complete && coordinatePlane.naturalWidth > 0) {
+      const graphSize = snapshotCanvas.height * 0.94;
+      context.drawImage(
+        coordinatePlane,
+        (snapshotCanvas.width - graphSize) / 2,
+        (snapshotCanvas.height - graphSize) / 2,
+        graphSize,
+        graphSize
+      );
+    }
+    context.drawImage(drawingCanvas, 0, 0);
+    return snapshotCanvas.toDataURL('image/png');
+  };
+
   const sendSketchCanvasSnapshot = () => {
     if (!isSketch || !canvasRef.current || !dataChannelRef.current || dataChannelRef.current.readyState !== 'open') return;
 
@@ -685,7 +713,7 @@ ${getSketchCoachingFocus()}`
           },
           {
             type: 'input_image',
-            image_url: canvasRef.current.toDataURL('image/png')
+            image_url: buildSketchSnapshot()
           }
         ]
       }
@@ -715,7 +743,8 @@ ${getSketchCoachingFocus()}`
     const rect = canvas.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
     const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
-    context.strokeStyle = penColor === 'erase' ? '#ffffff' : penColor;
+    context.globalCompositeOperation = penColor === 'erase' ? 'destination-out' : 'source-over';
+    context.strokeStyle = penColor === 'erase' ? '#000000' : penColor;
     context.lineWidth = penColor === 'erase' ? 28 : 5;
     context.lineCap = 'round';
     context.lineJoin = 'round';
@@ -725,6 +754,8 @@ ${getSketchCoachingFocus()}`
 
   const handlePointerUpCanvas = (event: React.PointerEvent<HTMLCanvasElement>) => {
     isDrawingRef.current = false;
+    const context = canvasRef.current?.getContext('2d');
+    if (context) context.globalCompositeOperation = 'source-over';
     canvasRef.current?.releasePointerCapture(event.pointerId);
   };
 
@@ -733,8 +764,6 @@ ${getSketchCoachingFocus()}`
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
   };
 
   const handlePushToTalkStart = () => {
@@ -1166,13 +1195,13 @@ ${getSketchCoachingFocus()}`
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
-          <div className="act-brand">{isSketch ? 'Realtime Drawing Coach' : 'Voice-Based Formative Assessment'}</div>
+          <div className="act-brand">{isSketch ? 'Realtime Graphing Coach' : 'Voice-Based Formative Assessment'}</div>
         </div>
         <main className="act-main">
           <section className="act-voice-card act-card">
             <div className="act-voice-intro">
               <h1>{isSketch ? "Hi, I'm SKETCH." : "Hi, I'm ALEX."}</h1>
-              <p>{isSketch ? "Let's draw some pictures." : `Let's have a conversation about ${topicTitle}.`}</p>
+              <p>{isSketch ? `Graph ${topicTitle} on the coordinate plane.` : `Let's have a conversation about ${topicTitle}.`}</p>
             </div>
             <div className={`act-voice-status-label act-voice-status-label-${voiceStatus}`}>{statusLabel}</div>
             <div className="act-voice-controls">
@@ -1244,7 +1273,7 @@ ${getSketchCoachingFocus()}`
                 onPointerUp={handlePointerUpCanvas}
                 onPointerCancel={handlePointerUpCanvas}
                 onPointerLeave={() => { isDrawingRef.current = false; }}
-                aria-label="Drawing canvas"
+                aria-label="Coordinate plane drawing canvas"
               />
             </section>
           ) : (

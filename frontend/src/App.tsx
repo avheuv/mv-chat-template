@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { GEOMETRY_DRAWING_TASKS } from './geometryTasks';
 
 // Use environment variable for production, fallback to local dev server
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';

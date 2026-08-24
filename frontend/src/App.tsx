@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { SKETCH_GEOMETRY_DRAWINGS } from './geometryTasks';
 
 // Use environment variable for production, fallback to local dev server
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -94,6 +95,11 @@ type RealtimeFunctionCall = {
   arguments?: string;
 };
 
+type GeometryDrawingToolArgs = {
+  drawing_index?: number;
+  evidence?: string;
+};
+
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'An unexpected error occurred';
 
 function App() {
@@ -136,6 +142,8 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
   const [penColor, setPenColor] = useState<PenColor>('black');
+  const [geometryDrawingIndex, setGeometryDrawingIndex] = useState(0);
+  const geometryDrawingIndexRef = useRef(0);
 
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(120);
@@ -282,6 +290,8 @@ function App() {
       if (!res.ok) throw new Error('Failed to start session');
       const data = await res.json();
       resetVoiceConnection();
+      geometryDrawingIndexRef.current = 0;
+      setGeometryDrawingIndex(0);
 
       // Initialize score bar for Gauge with Glassbox (or any assessment)
       const currentPrototype = prototypes.find(p => p.id === selectedPrototypeId);
@@ -396,11 +406,10 @@ function App() {
   useEffect(() => {
     if (view !== 'chat' || !isSketch || !canvasRef.current) return;
 
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
+    const context = canvasRef.current.getContext('2d');
     if (!context) return;
     context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   }, [view, isSketch]);
 
   const getSelectedLessonTopicTitle = () => {
@@ -413,33 +422,14 @@ function App() {
     return topicDetails.join('-').trim() || fullTopicTitle.trim();
   };
 
-  const getSketchQuestionInput = () => activePrototypeUI?.inputs.find(input => input.id === 'question');
+  const getSketchQuestion = () => SKETCH_GEOMETRY_DRAWINGS[geometryDrawingIndex] || 'All drawings complete!';
 
-  const getSketchQuestionValue = () => {
-    const questionInput = getSketchQuestionInput();
-    return questionInput ? inputValues[questionInput.id] : '';
-  };
-
-  const getSketchQuestion = () => {
-    const questionInput = getSketchQuestionInput();
-    const selectedValue = getSketchQuestionValue();
-    return questionInput?.options?.find(option => option.value === selectedValue)?.label
-      || selectedValue
-      || 'Why do the seasons occur on Earth?';
-  };
-
-  const getSketchCoachingFocus = () => {
-    if (getSketchQuestionValue() === 'function_shapes_xy_plane') {
-      return [
-        'This is a high school math sketching task about function shapes on an XY coordinate plane.',
-        'Start by asking the student to sketch the function shapes on axes and explain what each curve represents.',
-        'Evaluate the drawing against the explanation: look for correctly labeled axes, a straight line for a linear function, U-shaped parabola for a quadratic, J-shaped rapid growth or decay for an exponential, and V-shape for an absolute value function.',
-        'Coach with short questions about intercepts, slope, vertex, curvature, symmetry, and growth patterns. Do not simply draw or list the correct answer for the student.'
-      ].join('\n');
-    }
-
-    return 'This is a high school science sketching task about Earth’s seasons. Focus on axial tilt, sunlight angle, day length, orbit position, and the common distance-from-the-Sun misconception.';
-  };
+  const getSketchCoachingFocus = () => [
+    `The student is working on drawing ${geometryDrawingIndex + 1} of ${SKETCH_GEOMETRY_DRAWINGS.length}: ${getSketchQuestion()}`,
+    'Evaluate only the current drawing. Look for clear visual evidence that every requested geometric property is present.',
+    'If a property is missing or ambiguous, give one concise hint and do not advance.',
+    'Only when the drawing visibly satisfies every property, call mark_geometry_drawing_complete with the current zero-based drawing_index. Never advance based only on the student saying it is correct.'
+  ].join('\n');
 
   const getVoiceLessonContext = () => {
     const systemContent = session?.messages.find(message => message.role === 'system')?.content || '';
@@ -451,10 +441,10 @@ function App() {
   const buildInitialVoiceInstructions = () => {
     if (isSketch) {
       return [
-        'You are SKETCH, a realtime drawing coach for a high school science student.',
-        `Question: ${getSketchQuestion()}`,
-        'The student will draw on a whiteboard and explain their thinking aloud. Use both the latest canvas image and the spoken explanation.',
-        'Your goal is to help the student make an accurate, realistic drawing and explanation for a high school level.',
+        'You are SKETCH, a realtime geometry drawing coach for a high school student.',
+        `Current drawing: ${getSketchQuestion()}`,
+        'The student will draw on a blank whiteboard and explain their thinking aloud. Use the latest canvas image as the source of truth.',
+        'Your goal is to help the student complete five geometry drawings in order.',
         'Do not score the student. Do not save anything. Do not give the answer or tell the student exactly what to draw.',
         'Respond only with one short coaching question, probing question, or hint. Keep it warm and concise.',
         `Selected prompt coaching focus:
@@ -533,6 +523,7 @@ ${getSketchCoachingFocus()}`
 
       dc.addEventListener('open', () => {
         setVoiceActive(true);
+        voiceStatusRef.current = 'connected';
         setVoiceStatus('connected');
         dc.send(JSON.stringify({
           type: 'response.create',
@@ -546,18 +537,26 @@ ${getSketchCoachingFocus()}`
         const realtimeEvent = JSON.parse(event.data);
 
         if (realtimeEvent.type === 'response.audio.delta') {
+          voiceStatusRef.current = 'speaking';
           setVoiceStatus('speaking');
         }
         if (realtimeEvent.type === 'response.done') {
           const assessmentToolCall = realtimeEvent.response?.output?.find((item: RealtimeFunctionCall) => (
             item.type === 'function_call' && item.name === 'update_assessment_scores'
           ));
+          const geometryToolCall = realtimeEvent.response?.output?.find((item: RealtimeFunctionCall) => (
+            item.type === 'function_call' && item.name === 'mark_geometry_drawing_complete'
+          ));
 
           if (assessmentToolCall) {
             const args = JSON.parse(assessmentToolCall.arguments || '{}');
             completeAssessmentToolCall(assessmentToolCall.call_id, args);
             applyAssessmentToolArgs(args);
+          } else if (geometryToolCall) {
+            const args = JSON.parse(geometryToolCall.arguments || '{}');
+            completeGeometryDrawingToolCall(geometryToolCall.call_id, args);
           } else if (!pushToTalkActiveRef.current) {
+            voiceStatusRef.current = 'connected';
             setVoiceStatus('connected');
           }
         }
@@ -670,6 +669,55 @@ ${getSketchCoachingFocus()}`
     }));
   };
 
+  const completeGeometryDrawingToolCall = (callId: string | undefined, args: GeometryDrawingToolArgs) => {
+    const dc = dataChannelRef.current;
+    if (!callId || !dc || dc.readyState !== 'open' || completedToolCallIdsRef.current.has(callId)) return;
+    completedToolCallIdsRef.current.add(callId);
+
+    const currentIndex = geometryDrawingIndexRef.current;
+    if (args.drawing_index !== currentIndex) {
+      dc.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'function_call_output',
+          call_id: callId,
+          output: JSON.stringify({ ok: false, error: `Expected drawing_index ${currentIndex}. Do not advance.` })
+        }
+      }));
+      dc.send(JSON.stringify({
+        type: 'response.create',
+        response: {
+          instructions: `Continue drawing ${currentIndex + 1}: "${SKETCH_GEOMETRY_DRAWINGS[currentIndex]}" Give one short hint and do not advance.`
+        }
+      }));
+      return;
+    }
+
+    const nextIndex = currentIndex + 1;
+    geometryDrawingIndexRef.current = nextIndex;
+    setGeometryDrawingIndex(nextIndex);
+    handleClearCanvas();
+
+    dc.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: callId,
+        output: JSON.stringify({ ok: true, completed: currentIndex, next: nextIndex })
+      }
+    }));
+
+    const allComplete = nextIndex >= SKETCH_GEOMETRY_DRAWINGS.length;
+    dc.send(JSON.stringify({
+      type: 'response.create',
+      response: {
+        instructions: allComplete
+          ? 'All five drawings are complete. Congratulate the student warmly and do not assign another drawing.'
+          : `Briefly confirm the previous drawing succeeded. Then introduce drawing ${nextIndex + 1} of ${SKETCH_GEOMETRY_DRAWINGS.length}: "${SKETCH_GEOMETRY_DRAWINGS[nextIndex]}" Do not describe how to draw it unless the student asks for a hint.`
+      }
+    }));
+  };
+
   const sendSketchCanvasSnapshot = () => {
     if (!isSketch || !canvasRef.current || !dataChannelRef.current || dataChannelRef.current.readyState !== 'open') return;
 
@@ -730,28 +778,43 @@ ${getSketchCoachingFocus()}`
 
   const handleClearCanvas = () => {
     const canvas = canvasRef.current;
-    const context = canvas?.getContext('2d');
-    if (!canvas || !context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    if (!canvas) return;
+    // Resetting the backing store removes every prior pixel and all drawing
+    // state. The geometry whiteboard intentionally has no background image.
+    const canvasWidth = canvas.width;
+    canvas.width = canvasWidth;
+    const context = canvas.getContext('2d');
+    if (!context) return;
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvas.width, canvas.height);
   };
 
-  const handlePushToTalkStart = () => {
-    if (!voiceActive || voiceStatus === 'connecting' || voiceStatus === 'error') return;
+  const handlePushToTalkStart = (event?: React.PointerEvent<HTMLButtonElement>) => {
+    const dc = dataChannelRef.current;
+    if (!voiceActive || !dc || dc.readyState !== 'open' || voiceStatusRef.current !== 'connected' || pushToTalkActiveRef.current) return;
+    event?.currentTarget.setPointerCapture(event.pointerId);
+    dc.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
     sendSketchCanvasSnapshot();
     pushToTalkActiveRef.current = true;
     setLocalMicrophoneEnabled(true);
+    voiceStatusRef.current = 'listening';
     setVoiceStatus('listening');
   };
 
-  const handlePushToTalkEnd = () => {
-    if (!voiceActive) return;
+  const handlePushToTalkEnd = (event?: React.PointerEvent<HTMLButtonElement>) => {
+    const dc = dataChannelRef.current;
+    if (!voiceActive || !pushToTalkActiveRef.current) return;
+    if (event?.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     pushToTalkActiveRef.current = false;
     setLocalMicrophoneEnabled(false);
-    if (voiceStatusRef.current === 'listening') {
-      setVoiceStatus('connected');
+    if (dc?.readyState === 'open') {
+      dc.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+      dc.send(JSON.stringify({ type: 'response.create' }));
     }
+    voiceStatusRef.current = 'connected';
+    setVoiceStatus('connected');
   };
 
   const handleStopVoiceChat = () => {
@@ -1166,13 +1229,13 @@ ${getSketchCoachingFocus()}`
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
-          <div className="act-brand">{isSketch ? 'Realtime Drawing Coach' : 'Voice-Based Formative Assessment'}</div>
+          <div className="act-brand">{isSketch ? 'Realtime Geometry Coach' : 'Voice-Based Formative Assessment'}</div>
         </div>
         <main className="act-main">
           <section className="act-voice-card act-card">
             <div className="act-voice-intro">
               <h1>{isSketch ? "Hi, I'm SKETCH." : "Hi, I'm ALEX."}</h1>
-              <p>{isSketch ? "Let's draw some pictures." : `Let's have a conversation about ${topicTitle}.`}</p>
+              <p>{isSketch ? 'Complete each geometry drawing to unlock the next one.' : `Let's have a conversation about ${topicTitle}.`}</p>
             </div>
             <div className={`act-voice-status-label act-voice-status-label-${voiceStatus}`}>{statusLabel}</div>
             <div className="act-voice-controls">
@@ -1181,7 +1244,6 @@ ${getSketchCoachingFocus()}`
                 onClick={voiceActive ? undefined : handleStartVoiceChat}
                 onPointerDown={voiceActive ? handlePushToTalkStart : undefined}
                 onPointerUp={voiceActive ? handlePushToTalkEnd : undefined}
-                onPointerLeave={voiceActive ? handlePushToTalkEnd : undefined}
                 onPointerCancel={voiceActive ? handlePushToTalkEnd : undefined}
                 onKeyDown={voiceActive ? (event) => {
                   if (event.key === ' ' || event.key === 'Enter') {
@@ -1214,6 +1276,20 @@ ${getSketchCoachingFocus()}`
 
           {isSketch ? (
             <section className="act-sketch-dock act-card">
+              <div className="act-sketch-task" aria-live="polite">
+                {geometryDrawingIndex < SKETCH_GEOMETRY_DRAWINGS.length ? (
+                  <>
+                    <span>Drawing {geometryDrawingIndex + 1} of {SKETCH_GEOMETRY_DRAWINGS.length}</span>
+                    <h2>{topicTitle}</h2>
+                    <p>Draw the figure, then push to talk and explain how it meets the requested properties.</p>
+                  </>
+                ) : (
+                  <>
+                    <span>5 of 5 complete</span>
+                    <h2>Great work—you completed every drawing!</h2>
+                  </>
+                )}
+              </div>
               <div className="act-sketch-toolbar" aria-label="Drawing tools">
                 {(['black', 'red', 'green', 'blue'] as PenColor[]).map(color => (
                   <button
@@ -1237,6 +1313,7 @@ ${getSketchCoachingFocus()}`
               <canvas
                 ref={canvasRef}
                 className="act-sketch-canvas"
+                style={{ background: '#ffffff', backgroundImage: 'none' }}
                 width={1200}
                 height={650}
                 onPointerDown={handlePointerDownCanvas}
@@ -1244,7 +1321,7 @@ ${getSketchCoachingFocus()}`
                 onPointerUp={handlePointerUpCanvas}
                 onPointerCancel={handlePointerUpCanvas}
                 onPointerLeave={() => { isDrawingRef.current = false; }}
-                aria-label="Drawing canvas"
+                aria-label="Geometry drawing canvas"
               />
             </section>
           ) : (

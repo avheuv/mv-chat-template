@@ -16,6 +16,14 @@ const GEOMETRY_DRAWING_TASKS = [
   'Draw a quadrilateral with exactly one pair of parallel sides.'
 ] as const;
 
+const GEOMETRY_DRAWING_TASKS = [
+  'Draw a triangle with one obtuse angle.',
+  'Draw two parallel lines cut by a transversal.',
+  'Draw two perpendicular lines and mark the right angle.',
+  'Draw an isosceles triangle and mark its two congruent sides.',
+  'Draw a quadrilateral with exactly one pair of parallel sides.'
+] as const;
+
 type UIInputConfig = {
   id: string;
   label: string;
@@ -539,6 +547,7 @@ ${getSketchCoachingFocus()}`
 
       dc.addEventListener('open', () => {
         setVoiceActive(true);
+        voiceStatusRef.current = 'connected';
         setVoiceStatus('connected');
         dc.send(JSON.stringify({
           type: 'response.create',
@@ -552,6 +561,7 @@ ${getSketchCoachingFocus()}`
         const realtimeEvent = JSON.parse(event.data);
 
         if (realtimeEvent.type === 'response.audio.delta') {
+          voiceStatusRef.current = 'speaking';
           setVoiceStatus('speaking');
         }
         if (realtimeEvent.type === 'response.done') {
@@ -570,6 +580,7 @@ ${getSketchCoachingFocus()}`
             const args = JSON.parse(geometryToolCall.arguments || '{}');
             completeGeometryDrawingToolCall(geometryToolCall.call_id, args);
           } else if (!pushToTalkActiveRef.current) {
+            voiceStatusRef.current = 'connected';
             setVoiceStatus('connected');
           }
         }
@@ -794,26 +805,43 @@ ${getSketchCoachingFocus()}`
 
   const handleClearCanvas = () => {
     const canvas = canvasRef.current;
-    const context = canvas?.getContext('2d');
-    if (!canvas || !context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    if (!canvas) return;
+    // Resetting the backing store removes every prior pixel and all drawing
+    // state. The geometry whiteboard intentionally has no background image.
+    const canvasWidth = canvas.width;
+    canvas.width = canvasWidth;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
   };
 
-  const handlePushToTalkStart = () => {
-    if (!voiceActive || voiceStatus === 'connecting' || voiceStatus === 'error') return;
+  const handlePushToTalkStart = (event?: React.PointerEvent<HTMLButtonElement>) => {
+    const dc = dataChannelRef.current;
+    if (!voiceActive || !dc || dc.readyState !== 'open' || voiceStatusRef.current !== 'connected' || pushToTalkActiveRef.current) return;
+    event?.currentTarget.setPointerCapture(event.pointerId);
+    dc.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
     sendSketchCanvasSnapshot();
     pushToTalkActiveRef.current = true;
     setLocalMicrophoneEnabled(true);
+    voiceStatusRef.current = 'listening';
     setVoiceStatus('listening');
   };
 
-  const handlePushToTalkEnd = () => {
-    if (!voiceActive) return;
+  const handlePushToTalkEnd = (event?: React.PointerEvent<HTMLButtonElement>) => {
+    const dc = dataChannelRef.current;
+    if (!voiceActive || !pushToTalkActiveRef.current) return;
+    if (event?.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     pushToTalkActiveRef.current = false;
     setLocalMicrophoneEnabled(false);
-    if (voiceStatusRef.current === 'listening') {
-      setVoiceStatus('connected');
+    if (dc?.readyState === 'open') {
+      dc.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+      dc.send(JSON.stringify({ type: 'response.create' }));
     }
+    voiceStatusRef.current = 'connected';
+    setVoiceStatus('connected');
   };
 
   const handleStopVoiceChat = () => {
@@ -1243,7 +1271,6 @@ ${getSketchCoachingFocus()}`
                 onClick={voiceActive ? undefined : handleStartVoiceChat}
                 onPointerDown={voiceActive ? handlePushToTalkStart : undefined}
                 onPointerUp={voiceActive ? handlePushToTalkEnd : undefined}
-                onPointerLeave={voiceActive ? handlePushToTalkEnd : undefined}
                 onPointerCancel={voiceActive ? handlePushToTalkEnd : undefined}
                 onKeyDown={voiceActive ? (event) => {
                   if (event.key === ' ' || event.key === 'Enter') {
@@ -1313,6 +1340,7 @@ ${getSketchCoachingFocus()}`
               <canvas
                 ref={canvasRef}
                 className="act-sketch-canvas"
+                style={{ background: '#ffffff', backgroundImage: 'none' }}
                 width={1200}
                 height={650}
                 onPointerDown={handlePointerDownCanvas}

@@ -204,6 +204,7 @@ async def create_realtime_client_secret(request: RealtimeClientSecretRequest):
             "model": model_to_use,
             "instructions": instructions,
             "audio": {
+                "input": {"turn_detection": None},
                 "output": {"voice": "marin"}
             },
             "tools": realtime_tools,

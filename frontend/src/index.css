@@ -685,6 +685,32 @@ body {
   flex-wrap: wrap;
 }
 
+.act-sketch-task {
+  margin-bottom: 18px;
+  padding: 4px 2px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.act-sketch-task span {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.act-sketch-task h2 {
+  margin: 6px 0;
+  color: #0f172a;
+  font-size: 22px;
+}
+
+.act-sketch-task p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .act-color-btn {
   width: 34px;
   height: 34px;

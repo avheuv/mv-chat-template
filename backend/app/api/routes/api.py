@@ -92,12 +92,18 @@ async def get_prototype(prototype_id: str):
 
 
 @router.get("/api/course-factory/stream")
-async def stream_course_factory(subject: str):
+async def stream_course_factory(subject: str, workflow_id: str):
     return StreamingResponse(
-        course_factory_service.stream_course(subject),
+        course_factory_service.stream_course(subject, workflow_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+@router.post("/api/course-factory/{workflow_id}/cancel")
+async def cancel_course_factory(workflow_id: str):
+    if not course_factory_service.cancel(workflow_id):
+        raise HTTPException(status_code=404, detail="Active workflow not found")
+    return {"status": "cancellation_requested", "workflow_id": workflow_id}
 
 @router.post("/api/chat/start", response_model=ChatSession)
 async def start_chat(request: ChatStartRequest):

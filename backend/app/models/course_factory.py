@@ -13,6 +13,7 @@ class AgentStatus(str, Enum):
     REVISING = "revising"
     APPROVED = "approved"
     ERROR = "error"
+    CANCELLED = "cancelled"
 
 
 class UnitStatus(str, Enum):
@@ -23,6 +24,7 @@ class UnitStatus(str, Enum):
     REVISION_REQUESTED = "revision_requested"
     APPROVED = "approved"
     ERROR = "error"
+    CANCELLED = "cancelled"
 
 
 class WorkflowStatus(str, Enum):
@@ -30,6 +32,7 @@ class WorkflowStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETE = "complete"
     ERROR = "error"
+    CANCELLED = "cancelled"
 
 
 class WorkflowAgent(str, Enum):
@@ -153,6 +156,7 @@ class CourseWorkflowState(BaseModel):
     status: WorkflowStatus = WorkflowStatus.NOT_STARTED
     current_unit_id: Optional[str] = None
     current_agent: Optional[WorkflowAgent] = None
+    cancel_requested: bool = False
     max_revision_cycles: int = Field(default=2, ge=0)
 
 

@@ -298,9 +298,15 @@ body {
 .cf-workspace-header, .cf-unit-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .cf-workspace-header h2 { margin: 2px 0 6px; font-size: 28px; letter-spacing: -.025em; }
 .cf-workspace-header p { margin: 0; color: #64748b; }
+.cf-workflow-controls { display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 9px; }
 .cf-workflow-state { flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; background: #e0e7ff; color: #3730a3; font-size: 12px; font-weight: 800; }
 .cf-workflow-complete { background: #dcfce7; color: #166534; }
 .cf-workflow-error { background: #fee2e2; color: #991b1b; }
+.cf-workflow-cancelled { background: #f1f5f9; color: #475569; }
+.cf-stop-button { min-height: 34px; padding: 7px 12px; border: 1px solid #b91c1c; border-radius: 10px; background: #dc2626; color: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; box-shadow: 0 3px 8px rgba(185, 28, 28, .18); }
+.cf-stop-button:hover:not(:disabled) { background: #b91c1c; }
+.cf-stop-button:focus-visible { outline: 3px solid rgba(239, 68, 68, .3); outline-offset: 2px; }
+.cf-stop-button:disabled { cursor: wait; opacity: .7; }
 .cf-live-message { display: flex; align-items: baseline; gap: 12px; margin: 20px 0; padding: 12px 16px; border: 1px solid #dbeafe; border-radius: 14px; background: #eff6ff; color: #334155; font-size: 14px; line-height: 1.4; }
 .cf-live-message-label { flex: 0 0 auto; color: #1d4ed8; font-size: 11px; font-weight: 900; line-height: inherit; letter-spacing: .05em; text-transform: uppercase; }
 .cf-live-message-text { min-width: 0; line-height: inherit; }
@@ -308,6 +314,7 @@ body {
 .cf-agent-card { display: flex; min-height: 168px; padding: 18px; flex-direction: column; align-items: flex-start; border: 1px solid #dbe2ea; border-radius: 18px; background: rgba(255,255,255,.92); box-shadow: 0 3px 12px rgba(15,23,42,.04); transition: opacity .2s, border-color .2s, box-shadow .2s, transform .2s; }
 .cf-agent-waiting { opacity: .58; filter: saturate(.6); }
 .cf-agent-working, .cf-agent-receiving_input { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12), 0 12px 28px rgba(79,70,229,.13); transform: translateY(-2px); }
+.cf-agent-cancelled { border-color: #cbd5e1; opacity: .78; }
 .cf-agent-error { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.1); }
 .cf-agent-name { max-width: 100%; margin: 13px 0 0; overflow-wrap: anywhere; color: #172033; font-size: 17px; line-height: 1.25; }
 .cf-status { display: inline-flex; min-height: 27px; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 900; line-height: 1; text-transform: uppercase; white-space: nowrap; }

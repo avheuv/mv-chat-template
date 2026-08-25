@@ -212,7 +212,54 @@ function HandoffConnector({ handoff, active, unit }: { handoff?: AgentHandoff; a
   );
 }
 
-function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, onStop, onSelectUnit }: { course: CourseOutline; liveMessage?: string; selectedUnitId?: string; stopping: boolean; onStop: () => void; onSelectUnit: (unitId: string) => void }) {
+type StructureEdit = Pick<CourseUnit, 'unit_id' | 'unit_title'>;
+
+function CourseStructureReview({ units, approving, approvalError, onApprove }: { units: CourseUnit[]; approving: boolean; approvalError: string; onApprove: (units: StructureEdit[]) => void }) {
+  const [draft, setDraft] = useState<StructureEdit[]>(() => units.map(({ unit_id, unit_title }) => ({ unit_id, unit_title })));
+  const [validationError, setValidationError] = useState('');
+  const draggedId = useRef<string | undefined>(undefined);
+
+  const move = (index: number, offset: number) => setDraft(current => {
+    const destination = index + offset;
+    if (destination < 0 || destination >= current.length) return current;
+    const next = [...current];
+    [next[index], next[destination]] = [next[destination], next[index]];
+    return next;
+  });
+  const approve = () => {
+    const normalized = draft.map(unit => ({ ...unit, unit_title: unit.unit_title.trim() }));
+    if (!normalized.length) return setValidationError('Add at least one unit before approving.');
+    if (normalized.some(unit => !unit.unit_title)) return setValidationError('Every unit needs a title before approval.');
+    if (new Set(normalized.map(unit => unit.unit_id)).size !== normalized.length) return setValidationError('Every unit must have a unique ID.');
+    setDraft(normalized);
+    setValidationError('');
+    onApprove(normalized);
+  };
+
+  return <section className="cf-structure-review" aria-labelledby="structure-review-heading">
+    <div className="cf-review-heading"><div><p className="act-eyebrow">Human checkpoint</p><h3 id="structure-review-heading">Review course structure</h3></div><span>{draft.length} {draft.length === 1 ? 'unit' : 'units'}</span></div>
+    <ol className="cf-editable-units">
+      {draft.map((unit, index) => <li key={unit.unit_id} draggable onDragStart={() => { draggedId.current = unit.unit_id; }} onDragOver={event => event.preventDefault()} onDrop={() => {
+        const from = draft.findIndex(item => item.unit_id === draggedId.current);
+        if (from >= 0 && from !== index) setDraft(current => { const next = [...current]; const [item] = next.splice(from, 1); next.splice(index, 0, item); return next; });
+      }}>
+        <span className="cf-drag-handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+        <span className="cf-unit-number">{index + 1}.</span>
+        <input aria-label={`Unit ${index + 1} title`} value={unit.unit_title} onChange={event => setDraft(current => current.map(item => item.unit_id === unit.unit_id ? { ...item, unit_title: event.target.value } : item))} onBlur={event => setDraft(current => current.map(item => item.unit_id === unit.unit_id ? { ...item, unit_title: event.target.value.trim() } : item))} />
+        <div className="cf-unit-actions">
+          <button type="button" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Move unit ${index + 1} up`}>↑</button>
+          <button type="button" onClick={() => move(index, 1)} disabled={index === draft.length - 1} aria-label={`Move unit ${index + 1} down`}>↓</button>
+          <button type="button" className="cf-delete-unit" onClick={() => setDraft(current => current.filter(item => item.unit_id !== unit.unit_id))} aria-label={`Delete unit ${index + 1}`}>Delete</button>
+        </div>
+      </li>)}
+    </ol>
+    <button className="cf-add-unit" type="button" onClick={() => setDraft(current => [...current, { unit_id: `u_${crypto.randomUUID()}`, unit_title: 'New Unit' }])}>+ Add Unit</button>
+    {(validationError || approvalError) && <p className="cf-review-error" role="alert">{validationError || approvalError}</p>}
+    <div className="cf-approval-checkpoint"><span aria-hidden="true" /><button type="button" onClick={approve} disabled={approving}>{approving ? 'Approving...' : 'Approve Course Structure'}</button><span aria-hidden="true" /></div>
+  </section>;
+}
+
+function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, approving, approvalError, onStop, onApprove, onSelectUnit }: { course: CourseOutline; liveMessage?: string; selectedUnitId?: string; stopping: boolean; approving: boolean; approvalError: string; onStop: () => void; onApprove: (units: StructureEdit[]) => void; onSelectUnit: (unitId: string) => void }) {
   const currentUnit = course.units.find(unit => unit.unit_id === selectedUnitId)
     || course.units.find(unit => unit.unit_id === course.workflow?.current_unit_id)
     || [...course.units].reverse().find(unit => unit.status === 'complete' || unit.status === 'error')
@@ -221,13 +268,14 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, onStop,
   const architect = course.course_architect || { agent_name: 'course_architect', status: 'waiting' as AgentStatus, input_summary: '', activity_summary: '', decision_summary: '', output_summary: '', structured_output: {} };
   const unitAgents = UNIT_AGENT_IDS.map(id => currentUnit?.agents?.find(agent => agent.agent_name === id) || ({ agent_name: id, status: 'waiting', input_summary: '', activity_summary: '', decision_summary: '', output_summary: '', structured_output: {} } as AgentDisplay));
   const handoffFor = (agentId: string) => currentUnit?.handoffs?.find(handoff => handoff.to_agent === agentId);
+  const awaitingApproval = course.workflow?.status === 'awaiting_course_structure_approval';
 
   return (
     <section className="cf-workspace" aria-label="Agent Workspace" aria-live="polite">
       <header className="cf-workspace-header">
         <div><p className="act-eyebrow">Specialized AI team</p><h2>Agent Workspace</h2><p>Watch the orchestrator pass instructional-design artifacts through the team.</p></div>
         <div className="cf-workflow-controls">
-          <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'cancelled' ? 'Generation stopped' : course.workflow?.status === 'error' ? 'Workflow stopped' : 'Workflow in progress'}</span>
+          <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'cancelled' ? 'Generation stopped' : course.workflow?.status === 'error' ? 'Workflow stopped' : awaitingApproval ? 'Waiting for course structure approval' : 'Workflow in progress'}</span>
           {course.workflow?.status === 'in_progress' && (
             <button className="cf-stop-button" type="button" onClick={onStop} disabled={stopping}>{stopping ? 'Stopping...' : 'Stop Generating'}</button>
           )}
@@ -240,9 +288,10 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, onStop,
           <div className="cf-unit-list"><strong>Created {course.units.length} units</strong><ol>{course.units.map(unit => <li key={unit.unit_id}>{unit.unit_title}</li>)}</ol></div>
         )}
       </div>
+      {awaitingApproval && <CourseStructureReview units={course.units} approving={approving} approvalError={approvalError} onApprove={onApprove} />}
       {course.units.length > 0 && (
         <>
-          <HandoffConnector handoff={handoffFor('standards_analyst')} active={course.workflow?.current_agent === 'standards_analyst'} />
+          {!awaitingApproval && <HandoffConnector handoff={handoffFor('standards_analyst')} active={course.workflow?.current_agent === 'standards_analyst'} />}
           <div className="cf-unit-header">
             <div><p>Current unit</p><h3>Unit {unitIndex + 1} of {course.units.length}: {currentUnit?.unit_title}</h3></div>
             <div className="cf-unit-tabs" aria-label="Select unit history">
@@ -283,6 +332,8 @@ function App() {
   const [expandedCourseUnits, setExpandedCourseUnits] = useState<Set<string>>(new Set());
   const [expandedCourseLessons, setExpandedCourseLessons] = useState<Set<string>>(new Set());
   const [courseStopping, setCourseStopping] = useState(false);
+  const [courseApproving, setCourseApproving] = useState(false);
+  const [courseApprovalError, setCourseApprovalError] = useState('');
   const courseStoppingRef = useRef(false);
   const courseWorkflowIdRef = useRef<string | undefined>(undefined);
   const courseEventsRef = useRef<EventSource | undefined>(undefined);
@@ -991,30 +1042,22 @@ ${getSketchCoachingFocus()}`
     return rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
   };
 
-  const handleGenerateCourse = () => {
-    const subject = inputValues.subject?.trim();
-    if (!subject) {
-      setError('Please enter a course subject.');
-      return;
-    }
-
-    setError('');
-    setLoading(true);
-    setCourseStopping(false);
-    courseStoppingRef.current = false;
-    setCourseResult(null);
-    setCourseLiveMessage('Starting the instructional-design workflow.');
-    setWorkspaceUnitId(undefined);
-
-    const workflowId = crypto.randomUUID();
-    courseWorkflowIdRef.current = workflowId;
-    const events = new EventSource(`${API_BASE}/course-factory/stream?subject=${encodeURIComponent(subject)}&workflow_id=${encodeURIComponent(workflowId)}`);
+  const connectCourseStream = (url: string) => {
+    const events = new EventSource(url);
     courseEventsRef.current = events;
     events.addEventListener('state', event => {
       const payload = JSON.parse((event as MessageEvent).data);
       setCourseResult(payload.course);
       setCourseLiveMessage(payload.message || 'Workflow state updated.');
       if (payload.course.workflow?.current_unit_id) setWorkspaceUnitId(payload.course.workflow.current_unit_id);
+    });
+    events.addEventListener('approval_required', event => {
+      const payload = JSON.parse((event as MessageEvent).data);
+      setCourseResult(payload.course);
+      setCourseLiveMessage(payload.message || 'Waiting for course structure approval.');
+      setLoading(false);
+      courseEventsRef.current = undefined;
+      events.close();
     });
     events.addEventListener('complete', event => {
       const payload = JSON.parse((event as MessageEvent).data);
@@ -1059,6 +1102,50 @@ ${getSketchCoachingFocus()}`
     });
   };
 
+  const handleGenerateCourse = () => {
+    const subject = inputValues.subject?.trim();
+    if (!subject) {
+      setError('Please enter a course subject.');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+    setCourseStopping(false);
+    setCourseApprovalError('');
+    courseStoppingRef.current = false;
+    setCourseResult(null);
+    setCourseLiveMessage('Starting the instructional-design workflow.');
+    setWorkspaceUnitId(undefined);
+
+    const workflowId = crypto.randomUUID();
+    courseWorkflowIdRef.current = workflowId;
+    connectCourseStream(`${API_BASE}/course-factory/stream?subject=${encodeURIComponent(subject)}&workflow_id=${encodeURIComponent(workflowId)}`);
+  };
+
+  const handleApproveCourseStructure = async (units: StructureEdit[]) => {
+    const workflowId = courseWorkflowIdRef.current;
+    if (!workflowId) return setCourseApprovalError('This review session is no longer available. Generate the course again.');
+    setCourseApproving(true);
+    setCourseApprovalError('');
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/course-factory/${encodeURIComponent(workflowId)}/approve-structure`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ units }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || 'The course structure could not be approved.');
+      setCourseResult(payload.course);
+      setCourseLiveMessage('Course structure approved. Resuming generation.');
+      setLoading(true);
+      connectCourseStream(`${API_BASE}/course-factory/${encodeURIComponent(workflowId)}/resume`);
+    } catch (approvalError) {
+      setCourseApprovalError(getErrorMessage(approvalError));
+    } finally {
+      setCourseApproving(false);
+    }
+  };
+
   const handleStopCourse = async () => {
     const workflowId = courseWorkflowIdRef.current;
     if (!workflowId || courseStoppingRef.current) return;
@@ -1081,6 +1168,8 @@ ${getSketchCoachingFocus()}`
     courseWorkflowIdRef.current = undefined;
     courseStoppingRef.current = false;
     setCourseStopping(false);
+    setCourseApproving(false);
+    setCourseApprovalError('');
     setCourseResult(null);
     setCourseLiveMessage('');
     setWorkspaceUnitId(undefined);
@@ -1182,14 +1271,14 @@ ${getSketchCoachingFocus()}`
             </section>
           )}
 
-          {courseResult && <AgentWorkspace course={courseResult} liveMessage={courseLiveMessage} selectedUnitId={workspaceUnitId} stopping={courseStopping} onStop={handleStopCourse} onSelectUnit={setWorkspaceUnitId} />}
+          {courseResult && <AgentWorkspace course={courseResult} liveMessage={courseLiveMessage} selectedUnitId={workspaceUnitId} stopping={courseStopping} approving={courseApproving} approvalError={courseApprovalError} onStop={handleStopCourse} onApprove={handleApproveCourseStructure} onSelectUnit={setWorkspaceUnitId} />}
 
           {courseResult && (
             <section className="act-card act-course-results">
               <div className="act-course-results-header">
                 <p className="act-eyebrow">Completed Course Outline</p>
                 <h1>{courseResult.subject}</h1>
-                <p className="act-course-results-subtitle">Eight sequenced units developed through the specialized Scope &amp; Sequence workflow.</p>
+                <p className="act-course-results-subtitle">{courseResult.units.length} sequenced units developed through the specialized Scope &amp; Sequence workflow.</p>
                 {error && <div className="act-error-message">Workflow stopped: {error} Completed upstream work is preserved below.</div>}
               </div>
 

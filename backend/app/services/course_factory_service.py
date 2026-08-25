@@ -13,6 +13,7 @@ from app.models.course_factory import (
     AgentStatus,
     ContentItem,
     CourseObjective,
+    CourseStructureApprovalRequest,
     CourseWorkflow,
     CourseWorkflowState,
     EssentialQuestion,
@@ -196,6 +197,8 @@ def _record_handoff(
 class CourseFactoryService:
     def __init__(self) -> None:
         self._runs: Dict[str, WorkflowRun] = {}
+        self._awaiting_approval: Dict[str, CourseWorkflow] = {}
+        self._approved: Dict[str, CourseWorkflow] = {}
 
     def cancel(self, workflow_id: str) -> bool:
         run = self._runs.get(workflow_id)
@@ -205,6 +208,42 @@ class CourseFactoryService:
         if run.active_task is not None and not run.active_task.done():
             run.active_task.cancel()
         return True
+
+    def approve_course_structure(
+        self, workflow_id: str, request: CourseStructureApprovalRequest
+    ) -> CourseWorkflow:
+        course = self._awaiting_approval.get(workflow_id)
+        if course is None:
+            raise KeyError("Workflow is not waiting for course structure approval.")
+        if not request.units:
+            raise ValueError("Add at least one unit before approving the course structure.")
+
+        unit_ids = [item.unit_id.strip() for item in request.units]
+        titles = [item.unit_title.strip() for item in request.units]
+        if any(not unit_id for unit_id in unit_ids):
+            raise ValueError("Every unit must have a stable unit ID.")
+        if len(set(unit_ids)) != len(unit_ids):
+            raise ValueError("Every unit must have a unique stable unit ID.")
+        if any(not title for title in titles):
+            raise ValueError("Every unit must have a title.")
+
+        existing = {unit.unit_id: unit for unit in course.units}
+        approved_units = []
+        for unit_id, title in zip(unit_ids, titles):
+            original = existing.get(unit_id)
+            approved_units.append(ScopeSequenceUnit(
+                unit_id=unit_id,
+                unit_title=title,
+                unit_description=original.unit_description if original else "Added during course structure review.",
+                agents=[AgentDisplay(agent_name=agent) for agent in UNIT_AGENTS],
+            ))
+        course.units = approved_units
+        course.workflow.status = WorkflowStatus.IN_PROGRESS
+        course.workflow.current_agent = None
+        course.workflow.current_unit_id = None
+        self._awaiting_approval.pop(workflow_id, None)
+        self._approved[workflow_id] = course
+        return course
 
     @staticmethod
     def _check_cancelled(run: WorkflowRun) -> None:
@@ -358,6 +397,51 @@ class CourseFactoryService:
                 "units": [item.model_dump(mode="json") for item in architect.units],
             }
             yield _state_event(course, f"Course Architect created {len(course.units)} units.")
+
+            course.workflow.status = WorkflowStatus.AWAITING_COURSE_STRUCTURE_APPROVAL
+            course.workflow.current_agent = None
+            self._awaiting_approval[workflow_id] = course
+            yield _json_event("approval_required", {
+                "course": course.model_dump(mode="json"),
+                "message": "Waiting for course structure approval.",
+            })
+            return
+
+        except WorkflowCancelled:
+            course.workflow.status = WorkflowStatus.CANCELLED
+            course.workflow.cancel_requested = True
+            course.workflow.current_agent = None
+            if active_display is not None and active_display.status in {AgentStatus.WORKING, AgentStatus.RECEIVING_INPUT}:
+                active_display.status = AgentStatus.CANCELLED
+                active_display.activity_summary = "Work stopped at the user's request."
+            yield _json_event("cancelled", {
+                "message": "Generation stopped.",
+                "course": course.model_dump(mode="json"),
+            })
+        except Exception as exc:
+            course.workflow.status = WorkflowStatus.ERROR
+            if active_display is not None:
+                active_display.status = AgentStatus.ERROR
+                active_display.error_message = str(exc)
+            yield _json_event("error", {
+                "message": str(exc),
+                "course": course.model_dump(mode="json"),
+            })
+        finally:
+            self._runs.pop(workflow_id, None)
+
+    async def resume_course(self, workflow_id: str) -> AsyncGenerator[str, None]:
+        course = self._approved.pop(workflow_id, None)
+        if course is None:
+            yield _json_event("error", {"message": "Approved workflow not found."})
+            return
+        run = WorkflowRun()
+        self._runs[workflow_id] = run
+        active_display: Optional[AgentDisplay] = None
+        active_unit: Optional[ScopeSequenceUnit] = None
+
+        try:
+            yield _state_event(course, "Course structure approved. Starting the unit workflow.")
 
             for unit_index, unit in enumerate(course.units):
                 self._check_cancelled(run)

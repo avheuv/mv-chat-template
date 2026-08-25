@@ -30,6 +30,7 @@ class UnitStatus(str, Enum):
 class WorkflowStatus(str, Enum):
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
+    AWAITING_COURSE_STRUCTURE_APPROVAL = "awaiting_course_structure_approval"
     COMPLETE = "complete"
     ERROR = "error"
     CANCELLED = "cancelled"
@@ -170,3 +171,12 @@ class CourseWorkflow(BaseModel):
     course_architect: Optional[AgentDisplay] = None
     handoffs: List[Handoff] = Field(default_factory=list)
     workflow: CourseWorkflowState = Field(default_factory=CourseWorkflowState)
+
+
+class CourseStructureUnitEdit(BaseModel):
+    unit_id: str
+    unit_title: str
+
+
+class CourseStructureApprovalRequest(BaseModel):
+    units: List[CourseStructureUnitEdit]

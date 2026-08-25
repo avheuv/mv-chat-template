@@ -87,6 +87,14 @@ def _json_event(event_type: str, payload: Dict[str, Any]) -> str:
     return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
 
+def _state_event(course: CourseWorkflow, message: str) -> str:
+    """Stream a UI-safe workflow snapshot; agent summaries never contain private reasoning."""
+    return _json_event("state", {
+        "course": course.model_dump(mode="json"),
+        "message": message,
+    })
+
+
 async def _call_agent(
     instructions: str,
     input_payload: Dict[str, Any],
@@ -268,7 +276,7 @@ class CourseFactoryService:
         active_unit = None
 
         try:
-            yield _json_event("log", {"message": "Course Architect working..."})
+            yield _state_event(course, "Course Architect is designing the course structure.")
             architect = await _call_agent(
                 "You are the Course Architect. Interpret the requested course and create exactly 8 logically sequenced units from foundations to application. Establish concise course-level context, a practical standards-source strategy, and measurable course-level objectives. Do not create unit Scope & Sequence columns; downstream specialists do that.",
                 {"requested_course": clean_subject, "required_unit_count": 8},
@@ -301,20 +309,34 @@ class CourseFactoryService:
                 "course_objectives": [item.model_dump(mode="json") for item in course.course_objectives],
                 "units": [item.model_dump(mode="json") for item in architect.units],
             }
+            yield _state_event(course, f"Course Architect created {len(course.units)} units.")
 
-            for unit in course.units:
+            for unit_index, unit in enumerate(course.units):
                 active_unit = unit
                 unit.status = UnitStatus.IN_PROGRESS
+                course.workflow.current_unit_id = unit.unit_id
                 previous_agent = WorkflowAgent.COURSE_ARCHITECT
                 previous_keys = ["course_context", "course_objectives", "units"]
                 for agent in UNIT_AGENTS:
                     _record_handoff(course, unit, previous_agent, agent, previous_keys)
                     active_display = _agent_display(unit, agent)
-                    yield _json_event("log", {"message": f"{AGENT_LABELS[agent]} working on {unit.unit_id}: {unit.unit_title}..."})
+                    active_display.status = AgentStatus.RECEIVING_INPUT
+                    active_display.input_summary = _summary_for_input(course, unit, agent)
+                    active_display.activity_summary = f"Preparing to work on {unit.unit_title}."
+                    course.workflow.current_agent = agent
+                    yield _state_event(
+                        course,
+                        f"Orchestrator passed the next artifact to {AGENT_LABELS[agent]} for Unit {unit_index + 1} of {len(course.units)}.",
+                    )
+                    active_display.status = AgentStatus.WORKING
+                    active_display.activity_summary = f"{AGENT_LABELS[agent]} is working on {unit.unit_title}."
+                    yield _state_event(course, f"{AGENT_LABELS[agent]} is working on {unit.unit_title}.")
                     await self._run_unit_agent(course, unit, agent)
+                    yield _state_event(course, f"{AGENT_LABELS[agent]} completed its work on {unit.unit_title}.")
                     previous_agent = agent
                     previous_keys = list(active_display.structured_output)
                 unit.status = UnitStatus.COMPLETE
+                yield _state_event(course, f"Unit {unit_index + 1} of {len(course.units)} is complete.")
 
             course.workflow.status = WorkflowStatus.COMPLETE
             course.workflow.current_unit_id = None

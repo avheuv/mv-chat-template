@@ -161,31 +161,37 @@ const statusLabel = (status: AgentStatus) => ({
   revision_requested: 'Revision requested', revising: 'Revising', approved: 'Approved', error: 'Error',
 }[status]);
 
-function AgentCard({ agent, unitLabel }: { agent: AgentDisplay; unitLabel?: string }) {
+const statusIcon = (status: AgentStatus) => status === 'complete' || status === 'approved'
+  ? '✓'
+  : status === 'error'
+    ? '!'
+    : ['working', 'receiving_input', 'revising'].includes(status)
+      ? 'AI'
+      : null;
+
+function conciseSummary(summary: string) {
+  const normalized = summary.replace(/\s+/g, ' ').trim();
+  const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.slice(0, 3).join(' ').trim() || normalized;
+  const words = sentences.split(' ');
+  return words.length > 50 ? `${words.slice(0, 50).join(' ').replace(/[,;:]$/, '')}…` : sentences;
+}
+
+function AgentCard({ agent }: { agent: AgentDisplay }) {
   const meta = AGENT_META[agent.agent_name] || { name: agent.agent_name, role: 'Specialized instructional-design agent.' };
-  const canInspect = Boolean(agent.input_summary || agent.activity_summary || agent.decision_summary || agent.output_summary || agent.error_message);
+  const workSummary = agent.decision_summary || agent.activity_summary || agent.error_message || '';
+  const icon = statusIcon(agent.status);
   return (
     <article className={`cf-agent-card cf-agent-${agent.status}`} aria-current={['working', 'receiving_input'].includes(agent.status) ? 'step' : undefined}>
-      <div className="cf-agent-card-top">
-        <span className="cf-agent-icon" aria-hidden="true">{agent.status === 'complete' ? '✓' : agent.status === 'error' ? '!' : 'AI'}</span>
-        <div className="cf-agent-heading">
-          <h3>{meta.name}</h3>
-          {unitLabel && <p className="cf-agent-unit">{unitLabel}</p>}
-        </div>
-        <span className={`cf-status cf-status-${agent.status}`}><i />{statusLabel(agent.status)}</span>
-      </div>
+      <div className={`cf-status cf-status-${agent.status}`}>{icon && <span aria-hidden="true">{icon}</span>}{statusLabel(agent.status)}</div>
+      <h3 className="cf-agent-name">{meta.name}</h3>
       <p className="cf-agent-role">{meta.role}</p>
-      {agent.output_summary && <p className="cf-agent-highlight">{agent.output_summary}</p>}
-      {agent.error_message && <p className="cf-agent-error">{agent.error_message}</p>}
-      {canInspect && (
+      {workSummary && (
         <details className="cf-agent-details" open={agent.status === 'error'}>
           <summary>View work summary</summary>
-          <dl>
-            <div><dt>Input</dt><dd>{agent.input_summary || 'No upstream input yet.'}</dd></div>
-            <div><dt>Activity</dt><dd>{agent.activity_summary || 'Waiting for the orchestrator.'}</dd></div>
-            <div><dt>Decision</dt><dd>{agent.decision_summary || 'No decision recorded yet.'}</dd></div>
-            <div><dt>Output</dt><dd>{agent.output_summary || 'No output produced yet.'}</dd></div>
-          </dl>
+          <div className="cf-work-summary">
+            <h4>Work Summary</h4>
+            <p>{conciseSummary(workSummary)}</p>
+          </div>
         </details>
       )}
     </article>
@@ -193,11 +199,16 @@ function AgentCard({ agent, unitLabel }: { agent: AgentDisplay; unitLabel?: stri
 }
 
 function HandoffConnector({ handoff, active }: { handoff?: AgentHandoff; active?: boolean }) {
-  const label = handoff?.artifact_summary || 'Awaiting upstream artifact';
+  const labels: Record<string, string> = {
+    standards_analyst: 'selected standards', alignment_agent: 'course objectives',
+    inquiry_designer: 'essential questions', learning_objective_designer: 'lesson objectives',
+    content_planner: 'planned content',
+  };
+  const label = handoff ? (labels[handoff.to_agent] || 'design artifact') : 'awaiting handoff';
   return (
     <div className={`cf-handoff ${handoff ? 'cf-handoff-complete' : ''} ${active ? 'cf-handoff-active' : ''}`}>
       <span className="cf-handoff-line" aria-hidden="true"><i /></span>
-      <span className="cf-handoff-label"><b>Orchestrator</b> · {label.replace(/^Passed /, '')}</span>
+      <span className="cf-handoff-label">{label}</span>
       <span className="cf-handoff-arrow" aria-hidden="true">↓</span>
     </div>
   );
@@ -238,7 +249,7 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, onSelectUnit }: {
           <div className="cf-unit-pipeline">
             {unitAgents.map((agent, index) => (
               <div key={agent.agent_name}>
-                <AgentCard agent={agent} unitLabel={`Unit ${unitIndex + 1}: ${currentUnit?.unit_title}`} />
+                <AgentCard agent={agent} />
                 {index < unitAgents.length - 1 && <HandoffConnector handoff={handoffFor(unitAgents[index + 1].agent_name)} active={course.workflow?.current_agent === unitAgents[index + 1].agent_name} />}
               </div>
             ))}

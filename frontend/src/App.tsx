@@ -219,13 +219,6 @@ function CourseStructureReview({ units, approving, approvalError, onApprove }: {
   const [validationError, setValidationError] = useState('');
   const draggedId = useRef<string | undefined>(undefined);
 
-  const move = (index: number, offset: number) => setDraft(current => {
-    const destination = index + offset;
-    if (destination < 0 || destination >= current.length) return current;
-    const next = [...current];
-    [next[index], next[destination]] = [next[destination], next[index]];
-    return next;
-  });
   const approve = () => {
     const normalized = draft.map(unit => ({ ...unit, unit_title: unit.unit_title.trim() }));
     if (!normalized.length) return setValidationError('Add at least one unit before approving.');
@@ -236,27 +229,23 @@ function CourseStructureReview({ units, approving, approvalError, onApprove }: {
     onApprove(normalized);
   };
 
-  return <section className="cf-structure-review" aria-labelledby="structure-review-heading">
+  return <div className="cf-unit-list cf-unit-list-editable" aria-labelledby="structure-review-heading">
     <div className="cf-review-heading"><div><p className="act-eyebrow">Human checkpoint</p><h3 id="structure-review-heading">Review course structure</h3></div><span>{draft.length} {draft.length === 1 ? 'unit' : 'units'}</span></div>
     <ol className="cf-editable-units">
-      {draft.map((unit, index) => <li key={unit.unit_id} draggable onDragStart={() => { draggedId.current = unit.unit_id; }} onDragOver={event => event.preventDefault()} onDrop={() => {
+      {draft.map((unit, index) => <li key={unit.unit_id} onDragOver={event => event.preventDefault()} onDrop={() => {
         const from = draft.findIndex(item => item.unit_id === draggedId.current);
         if (from >= 0 && from !== index) setDraft(current => { const next = [...current]; const [item] = next.splice(from, 1); next.splice(index, 0, item); return next; });
       }}>
-        <span className="cf-drag-handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+        <span className="cf-drag-handle" draggable onDragStart={() => { draggedId.current = unit.unit_id; }} title={`Drag to reorder ${unit.unit_title}`} role="img" aria-label={`Drag to reorder ${unit.unit_title}`}>⠿</span>
         <span className="cf-unit-number">{index + 1}.</span>
         <input aria-label={`Unit ${index + 1} title`} value={unit.unit_title} onChange={event => setDraft(current => current.map(item => item.unit_id === unit.unit_id ? { ...item, unit_title: event.target.value } : item))} onBlur={event => setDraft(current => current.map(item => item.unit_id === unit.unit_id ? { ...item, unit_title: event.target.value.trim() } : item))} />
-        <div className="cf-unit-actions">
-          <button type="button" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Move unit ${index + 1} up`}>↑</button>
-          <button type="button" onClick={() => move(index, 1)} disabled={index === draft.length - 1} aria-label={`Move unit ${index + 1} down`}>↓</button>
-          <button type="button" className="cf-delete-unit" onClick={() => setDraft(current => current.filter(item => item.unit_id !== unit.unit_id))} aria-label={`Delete unit ${index + 1}`}>Delete</button>
-        </div>
+        <button type="button" className="cf-delete-unit" onClick={() => setDraft(current => current.filter(item => item.unit_id !== unit.unit_id))} aria-label={`Delete ${unit.unit_title || `unit ${index + 1}`}`}>×</button>
       </li>)}
     </ol>
     <button className="cf-add-unit" type="button" onClick={() => setDraft(current => [...current, { unit_id: `u_${crypto.randomUUID()}`, unit_title: 'New Unit' }])}>+ Add Unit</button>
     {(validationError || approvalError) && <p className="cf-review-error" role="alert">{validationError || approvalError}</p>}
     <div className="cf-approval-checkpoint"><span aria-hidden="true" /><button type="button" onClick={approve} disabled={approving}>{approving ? 'Approving...' : 'Approve Course Structure'}</button><span aria-hidden="true" /></div>
-  </section>;
+  </div>;
 }
 
 function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, approving, approvalError, onStop, onApprove, onSelectUnit }: { course: CourseOutline; liveMessage?: string; selectedUnitId?: string; stopping: boolean; approving: boolean; approvalError: string; onStop: () => void; onApprove: (units: StructureEdit[]) => void; onSelectUnit: (unitId: string) => void }) {
@@ -275,7 +264,7 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, approvi
       <header className="cf-workspace-header">
         <div><p className="act-eyebrow">Specialized AI team</p><h2>Agent Workspace</h2><p>Watch the orchestrator pass instructional-design artifacts through the team.</p></div>
         <div className="cf-workflow-controls">
-          <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'cancelled' ? 'Generation stopped' : course.workflow?.status === 'error' ? 'Workflow stopped' : awaitingApproval ? 'Waiting for course structure approval' : 'Workflow in progress'}</span>
+          <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'cancelled' ? 'Generation stopped' : course.workflow?.status === 'error' ? 'Workflow stopped' : awaitingApproval ? 'Pending approval' : 'Workflow in progress'}</span>
           {course.workflow?.status === 'in_progress' && (
             <button className="cf-stop-button" type="button" onClick={onStop} disabled={stopping}>{stopping ? 'Stopping...' : 'Stop Generating'}</button>
           )}
@@ -284,11 +273,12 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, approvi
       {liveMessage && <div className="cf-live-message"><span className="cf-live-message-label">Workflow update</span><span className="cf-live-message-text">{liveMessage}</span></div>}
       <div className="cf-architect-stage">
         <AgentCard agent={architect} />
-        {course.units.length > 0 && architect.status === 'complete' && (
+        {awaitingApproval ? (
+          <CourseStructureReview units={course.units} approving={approving} approvalError={approvalError} onApprove={onApprove} />
+        ) : course.units.length > 0 && architect.status === 'complete' && (
           <div className="cf-unit-list"><strong>Created {course.units.length} units</strong><ol>{course.units.map(unit => <li key={unit.unit_id}>{unit.unit_title}</li>)}</ol></div>
         )}
       </div>
-      {awaitingApproval && <CourseStructureReview units={course.units} approving={approving} approvalError={approvalError} onApprove={onApprove} />}
       {course.units.length > 0 && (
         <>
           {!awaitingApproval && <HandoffConnector handoff={handoffFor('standards_analyst')} active={course.workflow?.current_agent === 'standards_analyst'} />}

@@ -7,6 +7,7 @@ import uuid
 from app.models.chat import ChatStartRequest, ChatSession, ChatSendRequest, ChatResponse, SaveScoreRequest, RealtimeClientSecretRequest
 from app.services.chat_service import chat_service
 from app.services.course_factory_service import course_factory_service
+from app.models.course_factory import CourseStructureApprovalRequest
 from app.services.firestore_service import firestore_service
 from app.core.config import settings
 import httpx
@@ -104,6 +105,24 @@ async def cancel_course_factory(workflow_id: str):
     if not course_factory_service.cancel(workflow_id):
         raise HTTPException(status_code=404, detail="Active workflow not found")
     return {"status": "cancellation_requested", "workflow_id": workflow_id}
+
+@router.post("/api/course-factory/{workflow_id}/approve-structure")
+async def approve_course_structure(workflow_id: str, request: CourseStructureApprovalRequest):
+    try:
+        course = course_factory_service.approve_course_structure(workflow_id, request)
+        return {"course": course.model_dump(mode="json"), "message": "Course structure approved."}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@router.get("/api/course-factory/{workflow_id}/resume")
+async def resume_course_factory(workflow_id: str):
+    return StreamingResponse(
+        course_factory_service.resume_course(workflow_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 @router.post("/api/chat/start", response_model=ChatSession)
 async def start_chat(request: ChatStartRequest):

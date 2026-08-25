@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.models.course_factory import AgentStatus, UnitStatus, WorkflowStatus
+from app.models.course_factory import AgentStatus, CourseStructureApprovalRequest, CourseStructureUnitEdit, UnitStatus, WorkflowStatus
 from app.services.course_factory_service import (
     AlignmentResult,
     ArchitectResult,
@@ -55,7 +55,12 @@ def result_for(model, payload):
 
 
 async def collect(service):
-    return [event async for event in service.stream_course("Astronomy")]
+    initial = [event async for event in service.stream_course("Astronomy", "test-workflow")]
+    awaiting = event_payload(initial[-1])["course"]
+    service.approve_course_structure("test-workflow", CourseStructureApprovalRequest(
+        units=[CourseStructureUnitEdit(unit_id=unit["unit_id"], unit_title=unit["unit_title"]) for unit in awaiting["units"]]
+    ))
+    return initial + [event async for event in service.resume_course("test-workflow")]
 
 
 def event_payload(event):
@@ -76,7 +81,12 @@ class CourseFactoryServiceTests(unittest.IsolatedAsyncioTestCase):
             return result_for(result_model, input_payload)
 
         async def consume():
-            return [event async for event in service.stream_course("Astronomy", "cancel-test")]
+            initial = [event async for event in service.stream_course("Astronomy", "cancel-test")]
+            course = event_payload(initial[-1])["course"]
+            service.approve_course_structure("cancel-test", CourseStructureApprovalRequest(
+                units=[CourseStructureUnitEdit(unit_id=unit["unit_id"], unit_title=unit["unit_title"]) for unit in course["units"]]
+            ))
+            return initial + [event async for event in service.resume_course("cancel-test")]
 
         with patch("app.services.course_factory_service._call_agent", new=AsyncMock(side_effect=fake_call)):
             consumer = asyncio.create_task(consume())
@@ -95,6 +105,59 @@ class CourseFactoryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(course["units"][0]["agents"][1]["status"], AgentStatus.WAITING.value)
         self.assertEqual(calls, [ArchitectResult, StandardsResult])
         self.assertFalse(service.cancel("cancel-test"))
+
+    async def test_pauses_for_approval_and_uses_edited_structure_authoritatively(self):
+        service = CourseFactoryService()
+        calls = []
+
+        async def fake_call(instructions, input_payload, result_model, max_tokens=4000):
+            calls.append((result_model, input_payload))
+            return result_for(result_model, input_payload)
+
+        with patch("app.services.course_factory_service._call_agent", new=AsyncMock(side_effect=fake_call)):
+            initial = [event async for event in service.stream_course("Astronomy", "edit-test")]
+            paused = event_payload(initial[-1])["course"]
+            self.assertTrue(initial[-1].startswith("event: approval_required"))
+            self.assertEqual(paused["workflow"]["status"], WorkflowStatus.AWAITING_COURSE_STRUCTURE_APPROVAL.value)
+            self.assertEqual([model for model, _ in calls], [ArchitectResult])
+            self.assertTrue(all(unit["status"] == UnitStatus.WAITING.value for unit in paused["units"]))
+
+            original_first_id = paused["units"][0]["unit_id"]
+            added_id = "u_added"
+            approved = service.approve_course_structure("edit-test", CourseStructureApprovalRequest(units=[
+                CourseStructureUnitEdit(unit_id=paused["units"][1]["unit_id"], unit_title="Renamed and First"),
+                CourseStructureUnitEdit(unit_id=original_first_id, unit_title="Moved Second"),
+                CourseStructureUnitEdit(unit_id=added_id, unit_title="Added Unit"),
+            ]))
+            self.assertEqual([unit.unit_id for unit in approved.units], [paused["units"][1]["unit_id"], original_first_id, added_id])
+            self.assertEqual(approved.units[0].unit_title, "Renamed and First")
+            resumed = [event async for event in service.resume_course("edit-test")]
+
+        completed = event_payload(resumed[-1])["course"]
+        self.assertEqual(completed["workflow"]["status"], WorkflowStatus.COMPLETE.value)
+        self.assertEqual(len(completed["units"]), 3)
+        standards_payloads = [payload for model, payload in calls if model is StandardsResult]
+        self.assertEqual([payload["unit"]["unit_title"] for payload in standards_payloads], ["Renamed and First", "Moved Second", "Added Unit"])
+        self.assertEqual(len(calls), 16)
+
+    async def test_approval_validates_units_without_discarding_paused_workflow(self):
+        service = CourseFactoryService()
+        async def fake_call(instructions, input_payload, result_model, max_tokens=4000):
+            return result_for(result_model, input_payload)
+
+        with patch("app.services.course_factory_service._call_agent", new=AsyncMock(side_effect=fake_call)):
+            events = [event async for event in service.stream_course("Astronomy", "validation-test")]
+        paused = event_payload(events[-1])["course"]
+        with self.assertRaisesRegex(ValueError, "at least one unit"):
+            service.approve_course_structure("validation-test", CourseStructureApprovalRequest(units=[]))
+        with self.assertRaisesRegex(ValueError, "must have a title"):
+            service.approve_course_structure("validation-test", CourseStructureApprovalRequest(units=[
+                CourseStructureUnitEdit(unit_id=paused["units"][0]["unit_id"], unit_title="   ")
+            ]))
+        approved = service.approve_course_structure("validation-test", CourseStructureApprovalRequest(units=[
+            CourseStructureUnitEdit(unit_id=paused["units"][0]["unit_id"], unit_title="  Valid title  ")
+        ]))
+        self.assertEqual(approved.units[0].unit_title, "Valid title")
 
     async def test_runs_each_unit_through_all_five_agents_with_cumulative_context(self):
         calls = []

@@ -18,6 +18,7 @@ class AgentStatus(str, Enum):
 class UnitStatus(str, Enum):
     WAITING = "waiting"
     IN_PROGRESS = "in_progress"
+    COMPLETE = "complete"
     IN_REVIEW = "in_review"
     REVISION_REQUESTED = "revision_requested"
     APPROVED = "approved"

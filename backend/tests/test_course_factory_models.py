@@ -20,6 +20,7 @@ class CourseWorkflowModelTests(unittest.TestCase):
 
         self.assertEqual(payload["schema_version"], "1.0")
         self.assertEqual(payload["workflow"]["max_revision_cycles"], 2)
+        self.assertFalse(payload["workflow"]["cancel_requested"])
         self.assertEqual(payload["units"][0]["scope_sequence"]["content"], [])
         self.assertEqual(payload["units"][0]["agents"], [])
         self.assertIsNone(payload["units"][0]["reviewer_feedback"])

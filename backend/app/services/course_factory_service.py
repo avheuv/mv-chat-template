@@ -1,5 +1,7 @@
+import asyncio
 import json
-from typing import Any, AsyncGenerator, Dict, List, Type, TypeVar
+from dataclasses import dataclass, field
+from typing import Any, AsyncGenerator, Coroutine, Dict, List, Optional, Type, TypeVar
 from uuid import uuid4
 
 from openai import AsyncOpenAI
@@ -81,6 +83,16 @@ class ContentResult(AgentSummary):
 
 
 AgentResult = TypeVar("AgentResult", bound=BaseModel)
+
+
+class WorkflowCancelled(Exception):
+    """Intentional user cancellation, kept separate from workflow failures."""
+
+
+@dataclass
+class WorkflowRun:
+    cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    active_task: Optional[asyncio.Task[Any]] = None
 
 
 def _json_event(event_type: str, payload: Dict[str, Any]) -> str:
@@ -182,11 +194,43 @@ def _record_handoff(
 
 
 class CourseFactoryService:
+    def __init__(self) -> None:
+        self._runs: Dict[str, WorkflowRun] = {}
+
+    def cancel(self, workflow_id: str) -> bool:
+        run = self._runs.get(workflow_id)
+        if run is None:
+            return False
+        run.cancel_event.set()
+        if run.active_task is not None and not run.active_task.done():
+            run.active_task.cancel()
+        return True
+
+    @staticmethod
+    def _check_cancelled(run: WorkflowRun) -> None:
+        if run.cancel_event.is_set():
+            raise WorkflowCancelled
+
+    async def _run_cancellable(self, run: WorkflowRun, call: Coroutine[Any, Any, AgentResult]) -> AgentResult:
+        if run.cancel_event.is_set():
+            call.close()
+            raise WorkflowCancelled
+        run.active_task = asyncio.create_task(call)
+        try:
+            return await run.active_task
+        except asyncio.CancelledError as exc:
+            if run.cancel_event.is_set():
+                raise WorkflowCancelled from exc
+            raise
+        finally:
+            run.active_task = None
+
     async def _run_unit_agent(
         self,
         course: CourseWorkflow,
         unit: ScopeSequenceUnit,
         agent: WorkflowAgent,
+        run: WorkflowRun,
     ) -> None:
         display = _agent_display(unit, agent)
         display.status = AgentStatus.WORKING
@@ -197,19 +241,19 @@ class CourseFactoryService:
 
         context = _structured_context(course, unit)
         if agent == WorkflowAgent.STANDARDS_ANALYST:
-            result = await _call_agent(
+            result = await self._run_cancellable(run, _call_agent(
                 "You are the Standards Analyst. Select appropriate, recognizable existing standards for this unit. Prefer standards from the supplied source guidance; never invent official codes or wording. If no jurisdiction is specified, identify the framework in source and use accurate framework language.",
                 context,
                 StandardsResult,
-            )
+            ))
             unit.scope_sequence.standards_addressed = result.standards_addressed
             key = "standards_addressed"
         elif agent == WorkflowAgent.ALIGNMENT_AGENT:
-            result = await _call_agent(
+            result = await self._run_cancellable(run, _call_agent(
                 "You are the Alignment Agent. Select only course-level objectives supplied by the Course Architect that substantively align with this unit and its selected standards. Preserve their objective IDs and exact text; do not create new objectives.",
                 context,
                 AlignmentResult,
-            )
+            ))
             known = {objective.objective_id: objective for objective in course.course_objectives}
             invalid_ids = [item.objective_id for item in result.course_level_objectives if item.objective_id not in known]
             if invalid_ids:
@@ -217,27 +261,27 @@ class CourseFactoryService:
             unit.scope_sequence.course_level_objectives = [known[item.objective_id] for item in result.course_level_objectives]
             key = "course_level_objectives"
         elif agent == WorkflowAgent.INQUIRY_DESIGNER:
-            result = await _call_agent(
+            result = await self._run_cancellable(run, _call_agent(
                 "You are the Inquiry Designer. Develop meaningful, open-ended conceptual essential questions and important enduring ideas for this unit. Questions must align to upstream standards and objectives and must not merely rewrite objectives as questions.",
                 context,
                 InquiryResult,
-            )
+            ))
             unit.scope_sequence.essential_questions = result.essential_questions
             key = "essential_questions"
         elif agent == WorkflowAgent.LEARNING_OBJECTIVE_DESIGNER:
-            result = await _call_agent(
+            result = await self._run_cancellable(run, _call_agent(
                 "You are the Learning Objective Designer. Create measurable lesson-level objectives using observable student actions and appropriate Bloom's Taxonomy verbs. Prefer 'Students will be able to...' and align every objective to the upstream standards, course objectives, and essential questions.",
                 context,
                 LearningObjectivesResult,
-            )
+            ))
             unit.scope_sequence.lesson_level_objectives = result.lesson_level_objectives
             key = "lesson_level_objectives"
         else:
-            result = await _call_agent(
+            result = await self._run_cancellable(run, _call_agent(
                 "You are the Content Planner. Identify the noun-driven concepts, principles, facts, vocabulary, processes, people, events, ideas, and lesson topics students need to meet the supplied lesson-level objectives. Derive content from the objectives and upstream decisions. Populate supports_objective_ids only with supplied lesson objective IDs.",
                 context,
                 ContentResult,
-            )
+            ))
             objective_ids = {item.objective_id for item in unit.scope_sequence.lesson_level_objectives}
             unsupported = {
                 objective_id
@@ -256,12 +300,15 @@ class CourseFactoryService:
         display.output_summary = result.output_summary
         display.structured_output = {key: [item.model_dump(mode="json") for item in getattr(result, key)]}
 
-    async def stream_course(self, subject: str) -> AsyncGenerator[str, None]:
+    async def stream_course(self, subject: str, workflow_id: Optional[str] = None) -> AsyncGenerator[str, None]:
         clean_subject = subject.strip()
         if not clean_subject:
             yield _json_event("error", {"message": "Subject is required."})
             return
 
+        workflow_id = workflow_id or str(uuid4())
+        run = WorkflowRun()
+        self._runs[workflow_id] = run
         course = CourseWorkflow(
             subject=clean_subject,
             workflow=CourseWorkflowState(status=WorkflowStatus.IN_PROGRESS, current_agent=WorkflowAgent.COURSE_ARCHITECT),
@@ -277,11 +324,12 @@ class CourseFactoryService:
 
         try:
             yield _state_event(course, "Course Architect is designing the course structure.")
-            architect = await _call_agent(
+            architect = await self._run_cancellable(run, _call_agent(
                 "You are the Course Architect. Interpret the requested course and create exactly 8 logically sequenced units from foundations to application. Establish concise course-level context, a practical standards-source strategy, and measurable course-level objectives. Do not create unit Scope & Sequence columns; downstream specialists do that.",
                 {"requested_course": clean_subject, "required_unit_count": 8},
                 ArchitectResult,
-            )
+            ))
+            self._check_cancelled(run)
             if len(architect.units) != 8:
                 raise RuntimeError(f"Course Architect must return exactly 8 units; received {len(architect.units)}.")
             if len({unit.unit_id for unit in architect.units}) != len(architect.units):
@@ -312,12 +360,14 @@ class CourseFactoryService:
             yield _state_event(course, f"Course Architect created {len(course.units)} units.")
 
             for unit_index, unit in enumerate(course.units):
+                self._check_cancelled(run)
                 active_unit = unit
                 unit.status = UnitStatus.IN_PROGRESS
                 course.workflow.current_unit_id = unit.unit_id
                 previous_agent = WorkflowAgent.COURSE_ARCHITECT
                 previous_keys = ["course_context", "course_objectives", "units"]
                 for agent in UNIT_AGENTS:
+                    self._check_cancelled(run)
                     _record_handoff(course, unit, previous_agent, agent, previous_keys)
                     active_display = _agent_display(unit, agent)
                     active_display.status = AgentStatus.RECEIVING_INPUT
@@ -331,7 +381,8 @@ class CourseFactoryService:
                     active_display.status = AgentStatus.WORKING
                     active_display.activity_summary = f"{AGENT_LABELS[agent]} is working on {unit.unit_title}."
                     yield _state_event(course, f"{AGENT_LABELS[agent]} is working on {unit.unit_title}.")
-                    await self._run_unit_agent(course, unit, agent)
+                    await self._run_unit_agent(course, unit, agent, run)
+                    self._check_cancelled(run)
                     yield _state_event(course, f"{AGENT_LABELS[agent]} completed its work on {unit.unit_title}.")
                     previous_agent = agent
                     previous_keys = list(active_display.structured_output)
@@ -345,6 +396,19 @@ class CourseFactoryService:
                 "course": course.model_dump(mode="json"),
                 "message": "Scope & Sequence workflow complete.",
             })
+        except WorkflowCancelled:
+            course.workflow.status = WorkflowStatus.CANCELLED
+            course.workflow.cancel_requested = True
+            course.workflow.current_agent = None
+            if active_display is not None and active_display.status in {AgentStatus.WORKING, AgentStatus.RECEIVING_INPUT}:
+                active_display.status = AgentStatus.CANCELLED
+                active_display.activity_summary = "Work stopped at the user's request."
+            if active_unit is not None and active_unit.status == UnitStatus.IN_PROGRESS:
+                active_unit.status = UnitStatus.CANCELLED
+            yield _json_event("cancelled", {
+                "message": "Generation stopped.",
+                "course": course.model_dump(mode="json"),
+            })
         except Exception as exc:
             course.workflow.status = WorkflowStatus.ERROR
             if active_display is not None:
@@ -356,6 +420,8 @@ class CourseFactoryService:
                 "message": str(exc),
                 "course": course.model_dump(mode="json"),
             })
+        finally:
+            self._runs.pop(workflow_id, None)
 
 
 course_factory_service = CourseFactoryService()

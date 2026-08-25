@@ -1,3 +1,4 @@
+import asyncio
 import json
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -62,6 +63,39 @@ def event_payload(event):
 
 
 class CourseFactoryServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cancellation_aborts_active_agent_and_preserves_completed_work(self):
+        service = CourseFactoryService()
+        standards_started = asyncio.Event()
+        calls = []
+
+        async def fake_call(instructions, input_payload, result_model, max_tokens=4000):
+            calls.append(result_model)
+            if result_model is StandardsResult:
+                standards_started.set()
+                await asyncio.Event().wait()
+            return result_for(result_model, input_payload)
+
+        async def consume():
+            return [event async for event in service.stream_course("Astronomy", "cancel-test")]
+
+        with patch("app.services.course_factory_service._call_agent", new=AsyncMock(side_effect=fake_call)):
+            consumer = asyncio.create_task(consume())
+            await asyncio.wait_for(standards_started.wait(), timeout=1)
+            self.assertTrue(service.cancel("cancel-test"))
+            events = await asyncio.wait_for(consumer, timeout=1)
+
+        cancelled = event_payload(events[-1])
+        course = cancelled["course"]
+        self.assertTrue(events[-1].startswith("event: cancelled"))
+        self.assertEqual(course["workflow"]["status"], WorkflowStatus.CANCELLED.value)
+        self.assertTrue(course["workflow"]["cancel_requested"])
+        self.assertEqual(course["course_architect"]["status"], AgentStatus.COMPLETE.value)
+        self.assertEqual(course["units"][0]["status"], UnitStatus.CANCELLED.value)
+        self.assertEqual(course["units"][0]["agents"][0]["status"], AgentStatus.CANCELLED.value)
+        self.assertEqual(course["units"][0]["agents"][1]["status"], AgentStatus.WAITING.value)
+        self.assertEqual(calls, [ArchitectResult, StandardsResult])
+        self.assertFalse(service.cancel("cancel-test"))
+
     async def test_runs_each_unit_through_all_five_agents_with_cumulative_context(self):
         calls = []
 

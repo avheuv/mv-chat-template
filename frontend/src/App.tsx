@@ -64,7 +64,7 @@ type CourseLesson = {
   activation: { activation_id: string; activation_text: string };
 };
 
-type AgentStatus = 'waiting' | 'receiving_input' | 'working' | 'complete' | 'revision_requested' | 'revising' | 'approved' | 'error';
+type AgentStatus = 'waiting' | 'receiving_input' | 'working' | 'complete' | 'revision_requested' | 'revising' | 'approved' | 'error' | 'cancelled';
 
 type AgentDisplay = {
   agent_name: string;
@@ -122,6 +122,7 @@ type CourseOutline = {
     current_unit_id?: string | null;
     current_agent?: string | null;
     max_revision_cycles: number;
+    cancel_requested?: boolean;
   };
 };
 
@@ -158,7 +159,7 @@ const UNIT_AGENT_IDS = ['standards_analyst', 'alignment_agent', 'inquiry_designe
 
 const statusLabel = (status: AgentStatus) => ({
   waiting: 'Waiting', receiving_input: 'Receiving input', working: 'Working', complete: 'Complete',
-  revision_requested: 'Revision requested', revising: 'Revising', approved: 'Approved', error: 'Error',
+  revision_requested: 'Revision requested', revising: 'Revising', approved: 'Approved', error: 'Error', cancelled: 'Stopped',
 }[status]);
 
 const statusIcon = (status: AgentStatus) => status === 'complete' || status === 'approved'
@@ -211,7 +212,7 @@ function HandoffConnector({ handoff, active, unit }: { handoff?: AgentHandoff; a
   );
 }
 
-function AgentWorkspace({ course, liveMessage, selectedUnitId, onSelectUnit }: { course: CourseOutline; liveMessage?: string; selectedUnitId?: string; onSelectUnit: (unitId: string) => void }) {
+function AgentWorkspace({ course, liveMessage, selectedUnitId, stopping, onStop, onSelectUnit }: { course: CourseOutline; liveMessage?: string; selectedUnitId?: string; stopping: boolean; onStop: () => void; onSelectUnit: (unitId: string) => void }) {
   const currentUnit = course.units.find(unit => unit.unit_id === selectedUnitId)
     || course.units.find(unit => unit.unit_id === course.workflow?.current_unit_id)
     || [...course.units].reverse().find(unit => unit.status === 'complete' || unit.status === 'error')
@@ -225,7 +226,12 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, onSelectUnit }: {
     <section className="cf-workspace" aria-label="Agent Workspace" aria-live="polite">
       <header className="cf-workspace-header">
         <div><p className="act-eyebrow">Specialized AI team</p><h2>Agent Workspace</h2><p>Watch the orchestrator pass instructional-design artifacts through the team.</p></div>
-        <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'error' ? 'Workflow stopped' : 'Workflow in progress'}</span>
+        <div className="cf-workflow-controls">
+          <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'cancelled' ? 'Generation stopped' : course.workflow?.status === 'error' ? 'Workflow stopped' : 'Workflow in progress'}</span>
+          {course.workflow?.status === 'in_progress' && (
+            <button className="cf-stop-button" type="button" onClick={onStop} disabled={stopping}>{stopping ? 'Stopping...' : 'Stop Generating'}</button>
+          )}
+        </div>
       </header>
       {liveMessage && <div className="cf-live-message"><span className="cf-live-message-label">Workflow update</span><span className="cf-live-message-text">{liveMessage}</span></div>}
       <div className="cf-architect-stage">
@@ -276,6 +282,10 @@ function App() {
   const [workspaceUnitId, setWorkspaceUnitId] = useState<string>();
   const [expandedCourseUnits, setExpandedCourseUnits] = useState<Set<string>>(new Set());
   const [expandedCourseLessons, setExpandedCourseLessons] = useState<Set<string>>(new Set());
+  const [courseStopping, setCourseStopping] = useState(false);
+  const courseStoppingRef = useRef(false);
+  const courseWorkflowIdRef = useRef<string | undefined>(undefined);
+  const courseEventsRef = useRef<EventSource | undefined>(undefined);
 
   // Ref for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -990,11 +1000,16 @@ ${getSketchCoachingFocus()}`
 
     setError('');
     setLoading(true);
+    setCourseStopping(false);
+    courseStoppingRef.current = false;
     setCourseResult(null);
     setCourseLiveMessage('Starting the instructional-design workflow.');
     setWorkspaceUnitId(undefined);
 
-    const events = new EventSource(`${API_BASE}/course-factory/stream?subject=${encodeURIComponent(subject)}`);
+    const workflowId = crypto.randomUUID();
+    courseWorkflowIdRef.current = workflowId;
+    const events = new EventSource(`${API_BASE}/course-factory/stream?subject=${encodeURIComponent(subject)}&workflow_id=${encodeURIComponent(workflowId)}`);
+    courseEventsRef.current = events;
     events.addEventListener('state', event => {
       const payload = JSON.parse((event as MessageEvent).data);
       setCourseResult(payload.course);
@@ -1008,6 +1023,19 @@ ${getSketchCoachingFocus()}`
       setExpandedCourseUnits(new Set([payload.course.units?.[0]?.unit_id].filter(Boolean)));
       setExpandedCourseLessons(new Set());
       setLoading(false);
+      courseWorkflowIdRef.current = undefined;
+      courseEventsRef.current = undefined;
+      events.close();
+    });
+    events.addEventListener('cancelled', event => {
+      const payload = JSON.parse((event as MessageEvent).data);
+      setCourseResult(payload.course);
+      setCourseLiveMessage(payload.message || 'Generation stopped.');
+      setLoading(false);
+      setCourseStopping(false);
+      courseStoppingRef.current = false;
+      courseWorkflowIdRef.current = undefined;
+      courseEventsRef.current = undefined;
       events.close();
     });
     events.addEventListener('error', event => {
@@ -1023,11 +1051,36 @@ ${getSketchCoachingFocus()}`
         setError('Course generation failed.');
       }
       setLoading(false);
+      setCourseStopping(false);
+      courseStoppingRef.current = false;
+      courseWorkflowIdRef.current = undefined;
+      courseEventsRef.current = undefined;
       events.close();
     });
   };
 
+  const handleStopCourse = async () => {
+    const workflowId = courseWorkflowIdRef.current;
+    if (!workflowId || courseStoppingRef.current) return;
+    courseStoppingRef.current = true;
+    setCourseStopping(true);
+    setCourseLiveMessage('Stopping generation...');
+    try {
+      const response = await fetch(`${API_BASE}/course-factory/${encodeURIComponent(workflowId)}/cancel`, { method: 'POST' });
+      if (!response.ok) throw new Error('The stop request could not be registered.');
+    } catch (stopError) {
+      courseStoppingRef.current = false;
+      setCourseStopping(false);
+      setError(stopError instanceof Error ? stopError.message : 'The stop request could not be registered.');
+    }
+  };
+
   const handleGenerateAnotherCourse = () => {
+    courseEventsRef.current?.close();
+    courseEventsRef.current = undefined;
+    courseWorkflowIdRef.current = undefined;
+    courseStoppingRef.current = false;
+    setCourseStopping(false);
     setCourseResult(null);
     setCourseLiveMessage('');
     setWorkspaceUnitId(undefined);
@@ -1129,7 +1182,7 @@ ${getSketchCoachingFocus()}`
             </section>
           )}
 
-          {courseResult && <AgentWorkspace course={courseResult} liveMessage={courseLiveMessage} selectedUnitId={workspaceUnitId} onSelectUnit={setWorkspaceUnitId} />}
+          {courseResult && <AgentWorkspace course={courseResult} liveMessage={courseLiveMessage} selectedUnitId={workspaceUnitId} stopping={courseStopping} onStop={handleStopCourse} onSelectUnit={setWorkspaceUnitId} />}
 
           {courseResult && (
             <section className="act-card act-course-results">

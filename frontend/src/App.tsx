@@ -207,7 +207,6 @@ function HandoffConnector({ handoff, active, unit }: { handoff?: AgentHandoff; a
       aria-label={`${state[0].toUpperCase()}${state.slice(1)} handoff`}
     >
       <span className="cf-handoff-line" aria-hidden="true"><i /></span>
-      <span className="cf-handoff-arrow" aria-hidden="true">{unit ? '→' : '↓'}</span>
     </div>
   );
 }
@@ -228,7 +227,7 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, onSelectUnit }: {
         <div><p className="act-eyebrow">Specialized AI team</p><h2>Agent Workspace</h2><p>Watch the orchestrator pass instructional-design artifacts through the team.</p></div>
         <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'error' ? 'Workflow stopped' : 'Workflow in progress'}</span>
       </header>
-      {liveMessage && <div className="cf-live-message"><span>Workflow update</span>{liveMessage}</div>}
+      {liveMessage && <div className="cf-live-message"><span className="cf-live-message-label">Workflow update</span><span className="cf-live-message-text">{liveMessage}</span></div>}
       <div className="cf-architect-stage">
         <AgentCard agent={architect} />
         {course.units.length > 0 && architect.status === 'complete' && (

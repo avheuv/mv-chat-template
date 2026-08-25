@@ -301,8 +301,9 @@ body {
 .cf-workflow-state { flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; background: #e0e7ff; color: #3730a3; font-size: 12px; font-weight: 800; }
 .cf-workflow-complete { background: #dcfce7; color: #166534; }
 .cf-workflow-error { background: #fee2e2; color: #991b1b; }
-.cf-live-message { display: flex; gap: 12px; margin: 20px 0; padding: 12px 16px; border: 1px solid #dbeafe; border-radius: 14px; background: #eff6ff; color: #334155; font-size: 14px; }
-.cf-live-message span { color: #1d4ed8; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.cf-live-message { display: flex; align-items: baseline; gap: 12px; margin: 20px 0; padding: 12px 16px; border: 1px solid #dbeafe; border-radius: 14px; background: #eff6ff; color: #334155; font-size: 14px; line-height: 1.4; }
+.cf-live-message-label { flex: 0 0 auto; color: #1d4ed8; font-size: 11px; font-weight: 900; line-height: inherit; letter-spacing: .05em; text-transform: uppercase; }
+.cf-live-message-text { min-width: 0; line-height: inherit; }
 .cf-architect-stage { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); gap: 16px; align-items: stretch; }
 .cf-agent-card { display: flex; min-height: 168px; padding: 18px; flex-direction: column; align-items: flex-start; border: 1px solid #dbe2ea; border-radius: 18px; background: rgba(255,255,255,.92); box-shadow: 0 3px 12px rgba(15,23,42,.04); transition: opacity .2s, border-color .2s, box-shadow .2s, transform .2s; }
 .cf-agent-waiting { opacity: .58; filter: saturate(.6); }
@@ -325,7 +326,6 @@ body {
 .cf-unit-list ol { margin: 9px 0 0; padding-left: 20px; line-height: 1.6; }
 .cf-handoff { position: relative; display: flex; flex-direction: column; align-items: center; min-height: 58px; color: #94a3b8; }
 .cf-handoff-line { width: 2px; flex: 1; min-height: 13px; background: #cbd5e1; }
-.cf-handoff-arrow { height: 14px; font-weight: 900; }
 .cf-handoff-complete { color: #4f46e5; }
 .cf-handoff-complete .cf-handoff-line { background: #818cf8; }
 .cf-handoff-active .cf-handoff-line i { display: block; width: 6px; height: 6px; margin-left: -2px; border-radius: 50%; background: #4f46e5; animation: cf-travel 1.4s ease-in-out infinite; }
@@ -341,7 +341,6 @@ body {
 .cf-unit-pipeline > .cf-agent-card { min-width: 0; }
 .cf-handoff-unit { align-self: center; min-height: 0; height: 24px; flex-direction: row; }
 .cf-handoff-unit .cf-handoff-line { width: auto; height: 2px; min-height: 0; min-width: 8px; }
-.cf-handoff-unit .cf-handoff-arrow { width: 12px; height: auto; line-height: 1; }
 .cf-handoff-unit.cf-handoff-active .cf-handoff-line i { margin: -2px 0 0; animation-name: cf-travel-horizontal; }
 @keyframes cf-pulse { 50% { opacity: .25; transform: scale(.65); } }
 @keyframes cf-travel { from { transform: translateY(0); } to { transform: translateY(35px); } }
@@ -351,8 +350,6 @@ body {
   .cf-unit-pipeline { grid-template-columns: 1fr; }
   .cf-handoff-unit { justify-self: center; width: 24px; height: 48px; flex-direction: column; }
   .cf-handoff-unit .cf-handoff-line { width: 2px; height: auto; min-height: 13px; min-width: 0; }
-  .cf-handoff-unit .cf-handoff-arrow { width: auto; height: 14px; font-size: 0; }
-  .cf-handoff-unit .cf-handoff-arrow::after { content: '↓'; font-size: 13px; }
   .cf-handoff-unit.cf-handoff-active .cf-handoff-line i { margin: 0 0 0 -2px; animation-name: cf-travel; }
 }
 @media (max-width: 640px) {

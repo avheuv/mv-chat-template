@@ -64,16 +64,55 @@ type CourseLesson = {
   activation: { activation_id: string; activation_text: string };
 };
 
+type AgentStatus = 'waiting' | 'receiving_input' | 'working' | 'complete' | 'revision_requested' | 'revising' | 'approved' | 'error';
+
+type AgentDisplay = {
+  agent_name: string;
+  status: AgentStatus;
+  input_summary: string;
+  activity_summary: string;
+  decision_summary: string;
+  output_summary: string;
+  structured_output: Record<string, unknown>;
+  error_message?: string | null;
+};
+
+type ScopeSequenceColumns = {
+  standards_addressed: Array<{ standard_id: string; description: string; source?: string | null }>;
+  course_level_objectives: Array<{ objective_id: string; objective_text: string }>;
+  essential_questions: Array<{ question_id: string; question_text: string }>;
+  lesson_level_objectives: Array<{ objective_id: string; objective_text: string; lesson_id?: string | null }>;
+  content: Array<{ content_id: string; label: string; category?: string | null; supports_objective_ids: string[] }>;
+};
+
 type CourseUnit = {
   unit_id: string;
   unit_title: string;
   unit_description: string;
   lessons: CourseLesson[];
+  scope_sequence?: ScopeSequenceColumns;
+  agents?: AgentDisplay[];
+  handoffs?: Array<Record<string, unknown>>;
+  reviewer_feedback?: Record<string, unknown> | null;
+  revision_count?: number;
+  status?: string;
 };
 
 type CourseOutline = {
+  schema_version?: string;
   subject: string;
+  course_context?: string;
+  standards_source_summary?: string;
+  course_objectives?: Array<{ objective_id: string; objective_text: string }>;
   units: CourseUnit[];
+  course_architect?: AgentDisplay | null;
+  handoffs?: Array<Record<string, unknown>>;
+  workflow?: {
+    status: string;
+    current_unit_id?: string | null;
+    current_agent?: string | null;
+    max_revision_cycles: number;
+  };
 };
 
 type PenColor = 'black' | 'red' | 'green' | 'blue' | 'erase';

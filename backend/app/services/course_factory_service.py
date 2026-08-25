@@ -4,6 +4,19 @@ from typing import Any, AsyncGenerator, Dict, List
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.models.course_factory import (
+    Activation,
+    AgentDisplay,
+    AgentStatus,
+    CourseLesson,
+    CourseWorkflow,
+    CourseWorkflowState,
+    LearningObjective,
+    ScopeSequenceUnit,
+    UnitStatus,
+    WorkflowAgent,
+    WorkflowStatus,
+)
 
 client = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -104,34 +117,75 @@ class CourseFactoryService:
             objective_by_lesson = {item.get("lesson_id"): item for item in objectives}
             activation_by_lesson = {item.get("lesson_id"): item for item in activations}
             lessons_by_unit: Dict[str, List[Dict[str, Any]]] = {}
-            for lesson in lessons:
-                lesson_id = lesson.get("lesson_id")
+            for lesson_index, lesson in enumerate(lessons, start=1):
+                lesson_id = lesson.get("lesson_id") or f"LESSON-{lesson_index:02d}"
+                objective = objective_by_lesson.get(lesson_id) or {}
+                activation = activation_by_lesson.get(lesson_id) or {}
                 lessons_by_unit.setdefault(lesson.get("unit_id", ""), []).append({
                     "lesson_id": lesson_id,
-                    "lesson_title": lesson.get("lesson_title", "Untitled Lesson"),
-                    "learning_objective": objective_by_lesson.get(lesson_id, {
-                        "objective_id": f"{lesson_id}-O01",
-                        "objective_text": "Analyze the core ideas introduced in this lesson.",
-                    }),
-                    "activation": activation_by_lesson.get(lesson_id, {
-                        "activation_id": f"{lesson_id}-A01",
-                        "activation_text": "What surprising question could reveal why this lesson matters?",
-                    }),
+                    "lesson_title": lesson.get("lesson_title") or "Untitled Lesson",
+                    "learning_objective": {
+                        "objective_id": objective.get("objective_id") or f"{lesson_id}-O01",
+                        "objective_text": objective.get("objective_text")
+                        or "Analyze the core ideas introduced in this lesson.",
+                    },
+                    "activation": {
+                        "activation_id": activation.get("activation_id") or f"{lesson_id}-A01",
+                        "activation_text": activation.get("activation_text")
+                        or "What surprising question could reveal why this lesson matters?",
+                    },
                 })
 
-            course = {
-                "subject": clean_subject,
-                "units": [
-                    {
-                        "unit_id": unit.get("unit_id", f"U{index:02d}"),
-                        "unit_title": unit.get("unit_title", "Untitled Unit"),
-                        "unit_description": unit.get("unit_description", ""),
-                        "lessons": lessons_by_unit.get(unit.get("unit_id", ""), [])[:3],
-                    }
-                    for index, unit in enumerate(units, start=1)
-                ],
-            }
-            yield _json_event("complete", {"course": course, "message": "Course outline complete."})
+            workflow_units = []
+            for index, unit in enumerate(units, start=1):
+                unit_id = unit.get("unit_id") or f"U{index:02d}"
+                unit_lessons = [
+                    CourseLesson(
+                        lesson_id=lesson["lesson_id"],
+                        lesson_title=lesson["lesson_title"],
+                        learning_objective=LearningObjective(**lesson["learning_objective"]),
+                        activation=Activation(**lesson["activation"]),
+                    )
+                    for lesson in lessons_by_unit.get(unit.get("unit_id", ""), [])[:3]
+                ]
+                workflow_units.append(ScopeSequenceUnit(
+                    unit_id=unit_id,
+                    unit_title=unit.get("unit_title") or "Untitled Unit",
+                    unit_description=unit.get("unit_description") or "",
+                    lessons=unit_lessons,
+                    agents=[
+                        AgentDisplay(agent_name=agent)
+                        for agent in (
+                            WorkflowAgent.STANDARDS_ANALYST,
+                            WorkflowAgent.ALIGNMENT_AGENT,
+                            WorkflowAgent.INQUIRY_DESIGNER,
+                            WorkflowAgent.LEARNING_OBJECTIVE_DESIGNER,
+                            WorkflowAgent.CONTENT_PLANNER,
+                            WorkflowAgent.ALIGNMENT_REVIEWER,
+                        )
+                    ],
+                    status=UnitStatus.WAITING,
+                ))
+
+            course = CourseWorkflow(
+                subject=clean_subject,
+                course_context=f"An eight-unit course about {clean_subject}.",
+                units=workflow_units,
+                course_architect=AgentDisplay(
+                    agent_name=WorkflowAgent.COURSE_ARCHITECT,
+                    status=AgentStatus.COMPLETE,
+                    input_summary=f"Requested course subject: {clean_subject}.",
+                    activity_summary="Organized the course into eight sequenced units.",
+                    decision_summary="Sequenced foundational concepts before advanced applications.",
+                    output_summary=f"Created {len(workflow_units)} unit titles and descriptions.",
+                    structured_output={"unit_ids": [unit.unit_id for unit in workflow_units]},
+                ),
+                workflow=CourseWorkflowState(status=WorkflowStatus.COMPLETE),
+            )
+            yield _json_event("complete", {
+                "course": course.model_dump(mode="json"),
+                "message": "Course outline complete.",
+            })
         except Exception as exc:
             yield _json_event("error", {"message": str(exc)})
 

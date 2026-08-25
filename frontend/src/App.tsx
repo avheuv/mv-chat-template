@@ -887,6 +887,10 @@ ${getSketchCoachingFocus()}`
       if ((event as MessageEvent).data) {
         const payload = JSON.parse((event as MessageEvent).data);
         setError(payload.message || 'Course generation failed.');
+        if (payload.course) {
+          setCourseResult(payload.course);
+          setExpandedCourseUnits(new Set([payload.course.units?.[0]?.unit_id].filter(Boolean)));
+        }
       } else {
         setError('Course generation failed.');
       }
@@ -1011,7 +1015,8 @@ ${getSketchCoachingFocus()}`
               <div className="act-course-results-header">
                 <p className="act-eyebrow">Completed Course Outline</p>
                 <h1>{courseResult.subject}</h1>
-                <p className="act-course-results-subtitle">Eight sequenced units with lesson-level objectives and activations.</p>
+                <p className="act-course-results-subtitle">Eight sequenced units developed through the specialized Scope &amp; Sequence workflow.</p>
+                {error && <div className="act-error-message">Workflow stopped: {error} Completed upstream work is preserved below.</div>}
               </div>
 
               <div className="act-course-accordion">
@@ -1034,6 +1039,30 @@ ${getSketchCoachingFocus()}`
                       {unitOpen && (
                         <div className="act-unit-body">
                           {unit.unit_description && <p className="act-unit-description">{unit.unit_description}</p>}
+                          {unit.scope_sequence && (
+                            <div className="act-lesson-list">
+                              <div className="act-content-block">
+                                <h3>Standards Addressed</h3>
+                                <ul>{unit.scope_sequence.standards_addressed.map(standard => <li key={standard.standard_id}><strong>{standard.standard_id}</strong>: {standard.description}{standard.source ? ` (${standard.source})` : ''}</li>)}</ul>
+                              </div>
+                              <div className="act-content-block">
+                                <h3>Course Level Objective(s)</h3>
+                                <ul>{unit.scope_sequence.course_level_objectives.map(objective => <li key={objective.objective_id}>{objective.objective_text}</li>)}</ul>
+                              </div>
+                              <div className="act-content-block">
+                                <h3>Essential Question(s)</h3>
+                                <ul>{unit.scope_sequence.essential_questions.map(question => <li key={question.question_id}>{question.question_text}</li>)}</ul>
+                              </div>
+                              <div className="act-content-block">
+                                <h3>Lesson-Level Objectives</h3>
+                                <ul>{unit.scope_sequence.lesson_level_objectives.map(objective => <li key={objective.objective_id}>{objective.objective_text}</li>)}</ul>
+                              </div>
+                              <div className="act-content-block">
+                                <h3>Content</h3>
+                                <ul>{unit.scope_sequence.content.map(item => <li key={item.content_id}>{item.label}{item.category ? ` — ${item.category}` : ''}</li>)}</ul>
+                              </div>
+                            </div>
+                          )}
                           <div className="act-lesson-list">
                             {unit.lessons.map((lesson, lessonIndex) => {
                               const lessonOpen = expandedCourseLessons.has(lesson.lesson_id);

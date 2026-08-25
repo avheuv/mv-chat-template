@@ -1,40 +1,144 @@
 import json
-from typing import Any, AsyncGenerator, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Tuple, Type
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
-
-client = AsyncOpenAI(api_key=settings.openai_api_key)
+from app.models.course_factory import (
+    Activation,
+    AgentDisplay,
+    AgentResponse,
+    AgentStatus,
+    AlignmentAgentOutput,
+    ContentPlannerOutput,
+    CourseArchitectOutput,
+    CourseLesson,
+    CourseWorkflow,
+    CourseWorkflowState,
+    Handoff,
+    InquiryDesignerOutput,
+    LearningObjective,
+    LearningObjectiveDesignerOutput,
+    ScopeSequenceUnit,
+    StandardsAnalystOutput,
+    UnitStatus,
+    WorkflowAgent,
+    WorkflowStatus,
+)
+from app.services.course_factory_prompts import build_agent_instructions
 
 DEFAULT_MODEL = "gpt-5.4-mini"
+UNIT_AGENT_SEQUENCE: Tuple[WorkflowAgent, ...] = (
+    WorkflowAgent.STANDARDS_ANALYST,
+    WorkflowAgent.ALIGNMENT_AGENT,
+    WorkflowAgent.INQUIRY_DESIGNER,
+    WorkflowAgent.LEARNING_OBJECTIVE_DESIGNER,
+    WorkflowAgent.CONTENT_PLANNER,
+)
+AGENT_OUTPUT_MODELS: Dict[WorkflowAgent, Type[BaseModel]] = {
+    WorkflowAgent.COURSE_ARCHITECT: CourseArchitectOutput,
+    WorkflowAgent.STANDARDS_ANALYST: StandardsAnalystOutput,
+    WorkflowAgent.ALIGNMENT_AGENT: AlignmentAgentOutput,
+    WorkflowAgent.INQUIRY_DESIGNER: InquiryDesignerOutput,
+    WorkflowAgent.LEARNING_OBJECTIVE_DESIGNER: LearningObjectiveDesignerOutput,
+    WorkflowAgent.CONTENT_PLANNER: ContentPlannerOutput,
+}
 
 
 def _json_event(event_type: str, payload: Dict[str, Any]) -> str:
     return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
 
-def _parse_json(content: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        return json.loads(content or "{}")
-    except json.JSONDecodeError:
-        return fallback
+def _agent_label(agent: WorkflowAgent) -> str:
+    return agent.value.replace("_", " ").title()
 
 
-async def _call_agent(agent_name: str, instructions: str, user_prompt: str, max_tokens: int = 4000) -> Dict[str, Any]:
+async def _call_agent(
+    agent: WorkflowAgent,
+    inputs: Dict[str, Any],
+    output_model: Type[BaseModel],
+    max_tokens: int = 4000,
+) -> Tuple[AgentDisplay, BaseModel]:
+    """Call one agent and validate both its public summaries and instructional artifact."""
     if not settings.openai_api_key:
         raise RuntimeError("OpenAI API key is not configured")
 
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
     response = await client.chat.completions.create(
         model=DEFAULT_MODEL,
         messages=[
-            {"role": "system", "content": instructions},
-            {"role": "user", "content": user_prompt},
+            {
+                "role": "system",
+                "content": build_agent_instructions(
+                    agent,
+                    json.dumps(output_model.model_json_schema()),
+                ),
+            },
+            {"role": "user", "content": json.dumps(inputs)},
         ],
         response_format={"type": "json_object"},
         max_completion_tokens=max_tokens,
     )
-    return _parse_json(response.choices[0].message.content or "{}", {"agent": agent_name})
+    try:
+        raw = json.loads(response.choices[0].message.content or "{}")
+        envelope = AgentResponse.model_validate(raw)
+        artifact = output_model.model_validate(envelope.structured_output)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        raise RuntimeError(f"{_agent_label(agent)} returned an invalid structured response: {exc}") from exc
+
+    display = AgentDisplay(
+        agent_name=agent,
+        status=AgentStatus.COMPLETE,
+        input_summary=envelope.input_summary,
+        activity_summary=envelope.activity_summary,
+        decision_summary=envelope.decision_summary,
+        output_summary=envelope.output_summary,
+        structured_output=artifact.model_dump(mode="json"),
+    )
+    return display, artifact
+
+
+def _handoff(
+    unit_id: str,
+    from_agent: WorkflowAgent,
+    to_agent: WorkflowAgent,
+    artifact_keys: List[str],
+    index: int,
+) -> Handoff:
+    return Handoff(
+        handoff_id=f"{unit_id}-H{index:02d}",
+        unit_id=unit_id,
+        from_agent=from_agent,
+        to_agent=to_agent,
+        artifact_summary=f"{_agent_label(from_agent)} output plus unit and course context.",
+        artifact_keys=artifact_keys,
+        status="complete",
+    )
+
+
+def _compatibility_lessons(unit: ScopeSequenceUnit) -> List[CourseLesson]:
+    """Keep the current accordion and exports useful until the Phase 4 table replaces them."""
+    questions = unit.scope_sequence.essential_questions
+    lessons = []
+    for index, objective in enumerate(unit.scope_sequence.lesson_level_objectives, start=1):
+        lesson_id = objective.lesson_id or f"{unit.unit_id}-L{index:02d}"
+        question = questions[(index - 1) % len(questions)].question_text if questions else (
+            f"What might make {objective.lesson_title or unit.unit_title} important?"
+        )
+        lessons.append(CourseLesson(
+            lesson_id=lesson_id,
+            lesson_title=objective.lesson_title or f"Lesson {index}",
+            learning_objective=LearningObjective(
+                objective_id=objective.objective_id,
+                objective_text=objective.objective_text,
+            ),
+            activation=Activation(
+                activation_id=f"{lesson_id}-A01",
+                activation_text=question,
+            ),
+        ))
+    return lessons
 
 
 class CourseFactoryService:
@@ -46,92 +150,92 @@ class CourseFactoryService:
 
         try:
             yield _json_event("log", {"message": f"Course Factory received the subject: {clean_subject}."})
-
-            yield _json_event("log", {"message": "Course Architect is creating the 8-unit course structure."})
-            architect = await _call_agent(
-                "Course Architect",
-                (
-                    "You are the Course Architect. Create the overall course structure. "
-                    "Create exactly 8 units, ordered from foundational concepts to advanced applications. "
-                    "Create a title and one concise description for each unit. Do not create lessons, "
-                    "learning objectives, or activations. Return only JSON: "
-                    "{\"units\":[{\"unit_id\":\"U01\",\"unit_title\":\"...\",\"unit_description\":\"...\"}]}"
-                ),
-                f"Create the unit structure for a course about {clean_subject}.",
+            yield _json_event("log", {"message": "Course Architect is establishing course context, objectives, and units."})
+            architect_display, architect_artifact = await _call_agent(
+                WorkflowAgent.COURSE_ARCHITECT,
+                {"subject": clean_subject},
+                CourseArchitectOutput,
             )
-            units = architect.get("units", [])[:8]
+            architect = CourseArchitectOutput.model_validate(architect_artifact)
 
-            yield _json_event("log", {"message": "Lesson Planner is adding exactly 3 lessons to each unit."})
-            lessons_data = await _call_agent(
-                "Lesson Planner",
-                (
-                    "You are the Lesson Planner. Create exactly 3 lessons for each provided unit. "
-                    "Lessons must align with the unit, be specific, student-facing, and appropriate for an online course. "
-                    "Do not create objectives or activations. Return only JSON: "
-                    "{\"lessons\":[{\"unit_id\":\"U01\",\"lesson_id\":\"U01-L01\",\"lesson_title\":\"...\"}]}"
-                ),
-                json.dumps({"subject": clean_subject, "units": units}),
-            )
-            lessons = lessons_data.get("lessons", [])
-
-            yield _json_event("log", {"message": "Objective Writer is writing one measurable objective for each lesson."})
-            objectives_data = await _call_agent(
-                "Objective Writer",
-                (
-                    "You are the Objective Writer. Create exactly 1 learning objective per lesson. "
-                    "Use measurable verbs such as explain, compare, classify, calculate, evaluate, predict, interpret, or analyze. "
-                    "Avoid understand, know, learn, appreciate, and explore. Objectives must align directly with lesson titles. "
-                    "Return only JSON: {\"objectives\":[{\"lesson_id\":\"U01-L01\",\"objective_id\":\"U01-L01-O01\",\"objective_text\":\"...\"}]}"
-                ),
-                json.dumps({"subject": clean_subject, "units": units, "lessons": lessons}),
-            )
-            objectives = objectives_data.get("objectives", [])
-
-            yield _json_event("log", {"message": "Activation Writer is creating one short curiosity-building activation for each lesson."})
-            activations_data = await _call_agent(
-                "Activation Writer",
-                (
-                    "You are the Activation Writer. Create exactly 1 activation for each lesson. "
-                    "Each activation must be a puzzle, scenario, provocative question, misconception challenge, or prediction task. "
-                    "Keep each activation under 75 words. Do not provide the answer. Create curiosity and relevance. "
-                    "Return only JSON: {\"activations\":[{\"lesson_id\":\"U01-L01\",\"activation_id\":\"U01-L01-A01\",\"activation_text\":\"...\"}]}"
-                ),
-                json.dumps({"subject": clean_subject, "units": units, "lessons": lessons}),
-            )
-            activations = activations_data.get("activations", [])
-
-            yield _json_event("log", {"message": "Course Factory is assembling the final nested course outline."})
-            objective_by_lesson = {item.get("lesson_id"): item for item in objectives}
-            activation_by_lesson = {item.get("lesson_id"): item for item in activations}
-            lessons_by_unit: Dict[str, List[Dict[str, Any]]] = {}
-            for lesson in lessons:
-                lesson_id = lesson.get("lesson_id")
-                lessons_by_unit.setdefault(lesson.get("unit_id", ""), []).append({
-                    "lesson_id": lesson_id,
-                    "lesson_title": lesson.get("lesson_title", "Untitled Lesson"),
-                    "learning_objective": objective_by_lesson.get(lesson_id, {
-                        "objective_id": f"{lesson_id}-O01",
-                        "objective_text": "Analyze the core ideas introduced in this lesson.",
-                    }),
-                    "activation": activation_by_lesson.get(lesson_id, {
-                        "activation_id": f"{lesson_id}-A01",
-                        "activation_text": "What surprising question could reveal why this lesson matters?",
-                    }),
-                })
-
-            course = {
-                "subject": clean_subject,
-                "units": [
-                    {
-                        "unit_id": unit.get("unit_id", f"U{index:02d}"),
-                        "unit_title": unit.get("unit_title", "Untitled Unit"),
-                        "unit_description": unit.get("unit_description", ""),
-                        "lessons": lessons_by_unit.get(unit.get("unit_id", ""), [])[:3],
-                    }
-                    for index, unit in enumerate(units, start=1)
+            course = CourseWorkflow(
+                subject=clean_subject,
+                course_context=architect.course_context,
+                course_objectives=architect.course_objectives,
+                units=[
+                    ScopeSequenceUnit(
+                        unit_id=unit.unit_id,
+                        unit_title=unit.unit_title,
+                        unit_description=unit.unit_description,
+                    )
+                    for unit in architect.units
                 ],
-            }
-            yield _json_event("complete", {"course": course, "message": "Course outline complete."})
+                course_architect=architect_display,
+                workflow=CourseWorkflowState(status=WorkflowStatus.IN_PROGRESS),
+            )
+
+            for unit in course.units:
+                unit.status = UnitStatus.IN_PROGRESS
+                course.workflow.current_unit_id = unit.unit_id
+                previous_agent = WorkflowAgent.COURSE_ARCHITECT
+                previous_keys = ["course_context", "course_objectives", "units"]
+
+                for agent_index, agent in enumerate(UNIT_AGENT_SEQUENCE, start=1):
+                    course.workflow.current_agent = agent
+                    yield _json_event("log", {
+                        "message": f"{_agent_label(agent)} is working on {unit.unit_id}: {unit.unit_title}."
+                    })
+                    unit.handoffs.append(_handoff(
+                        unit.unit_id,
+                        previous_agent,
+                        agent,
+                        previous_keys,
+                        agent_index,
+                    ))
+                    inputs = {
+                        "subject": course.subject,
+                        "course_context": course.course_context,
+                        "course_objectives": [item.model_dump(mode="json") for item in course.course_objectives],
+                        "unit": {
+                            "unit_id": unit.unit_id,
+                            "unit_title": unit.unit_title,
+                            "unit_description": unit.unit_description,
+                        },
+                        "scope_sequence_so_far": unit.scope_sequence.model_dump(mode="json"),
+                        "standards_source": None,
+                    }
+                    display, artifact = await _call_agent(agent, inputs, AGENT_OUTPUT_MODELS[agent])
+                    unit.agents.append(display)
+
+                    if isinstance(artifact, StandardsAnalystOutput):
+                        unit.scope_sequence.standards_addressed = artifact.standards
+                        if not course.standards_source_summary:
+                            course.standards_source_summary = artifact.standards_source_summary
+                        previous_keys = ["standards_addressed", "standards_source_summary"]
+                    elif isinstance(artifact, AlignmentAgentOutput):
+                        unit.scope_sequence.course_level_objectives = artifact.course_level_objectives
+                        previous_keys = ["standards_addressed", "course_level_objectives"]
+                    elif isinstance(artifact, InquiryDesignerOutput):
+                        unit.scope_sequence.essential_questions = artifact.essential_questions
+                        previous_keys = ["course_level_objectives", "essential_questions"]
+                    elif isinstance(artifact, LearningObjectiveDesignerOutput):
+                        unit.scope_sequence.lesson_level_objectives = artifact.lesson_level_objectives
+                        previous_keys = ["essential_questions", "lesson_level_objectives"]
+                    elif isinstance(artifact, ContentPlannerOutput):
+                        unit.scope_sequence.content = artifact.content
+                        previous_keys = ["lesson_level_objectives", "content"]
+                    previous_agent = agent
+
+                unit.lessons = _compatibility_lessons(unit)
+                unit.status = UnitStatus.IN_REVIEW
+
+            course.workflow.status = WorkflowStatus.COMPLETE
+            course.workflow.current_unit_id = None
+            course.workflow.current_agent = None
+            yield _json_event("complete", {
+                "course": course.model_dump(mode="json"),
+                "message": "Sequential Scope & Sequence draft complete. Alignment review is reserved for Phase 5.",
+            })
         except Exception as exc:
             yield _json_event("error", {"message": str(exc)})
 

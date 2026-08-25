@@ -77,6 +77,16 @@ type AgentDisplay = {
   error_message?: string | null;
 };
 
+type AgentHandoff = {
+  handoff_id?: string;
+  from_agent: string;
+  to_agent: string;
+  unit_id?: string | null;
+  artifact_summary: string;
+  artifact_keys?: string[];
+  status?: string;
+};
+
 type ScopeSequenceColumns = {
   standards_addressed: Array<{ standard_id: string; description: string; source?: string | null }>;
   course_level_objectives: Array<{ objective_id: string; objective_text: string }>;
@@ -92,7 +102,7 @@ type CourseUnit = {
   lessons: CourseLesson[];
   scope_sequence?: ScopeSequenceColumns;
   agents?: AgentDisplay[];
-  handoffs?: Array<Record<string, unknown>>;
+  handoffs?: AgentHandoff[];
   reviewer_feedback?: Record<string, unknown> | null;
   revision_count?: number;
   status?: string;
@@ -106,7 +116,7 @@ type CourseOutline = {
   course_objectives?: Array<{ objective_id: string; objective_text: string }>;
   units: CourseUnit[];
   course_architect?: AgentDisplay | null;
-  handoffs?: Array<Record<string, unknown>>;
+  handoffs?: AgentHandoff[];
   workflow?: {
     status: string;
     current_unit_id?: string | null;
@@ -135,6 +145,110 @@ type RealtimeFunctionCall = {
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'An unexpected error occurred';
 
+const AGENT_META: Record<string, { name: string; role: string }> = {
+  course_architect: { name: 'Course Architect', role: 'Shapes the course structure and sequence.' },
+  standards_analyst: { name: 'Standards Analyst', role: 'Selects standards that fit the unit.' },
+  alignment_agent: { name: 'Alignment Agent', role: 'Connects standards to course objectives.' },
+  inquiry_designer: { name: 'Inquiry Designer', role: 'Develops essential questions and enduring ideas.' },
+  learning_objective_designer: { name: 'Learning Objective Designer', role: 'Creates measurable lesson-level objectives.' },
+  content_planner: { name: 'Content Planner', role: 'Plans the content needed to meet each objective.' },
+};
+
+const UNIT_AGENT_IDS = ['standards_analyst', 'alignment_agent', 'inquiry_designer', 'learning_objective_designer', 'content_planner'];
+
+const statusLabel = (status: AgentStatus) => ({
+  waiting: 'Waiting', receiving_input: 'Receiving input', working: 'Working', complete: 'Complete',
+  revision_requested: 'Revision requested', revising: 'Revising', approved: 'Approved', error: 'Error',
+}[status]);
+
+function AgentCard({ agent, unitLabel }: { agent: AgentDisplay; unitLabel?: string }) {
+  const meta = AGENT_META[agent.agent_name] || { name: agent.agent_name, role: 'Specialized instructional-design agent.' };
+  const canInspect = Boolean(agent.input_summary || agent.activity_summary || agent.decision_summary || agent.output_summary || agent.error_message);
+  return (
+    <article className={`cf-agent-card cf-agent-${agent.status}`} aria-current={['working', 'receiving_input'].includes(agent.status) ? 'step' : undefined}>
+      <div className="cf-agent-card-top">
+        <span className="cf-agent-icon" aria-hidden="true">{agent.status === 'complete' ? '✓' : agent.status === 'error' ? '!' : 'AI'}</span>
+        <div className="cf-agent-heading">
+          <h3>{meta.name}</h3>
+          {unitLabel && <p className="cf-agent-unit">{unitLabel}</p>}
+        </div>
+        <span className={`cf-status cf-status-${agent.status}`}><i />{statusLabel(agent.status)}</span>
+      </div>
+      <p className="cf-agent-role">{meta.role}</p>
+      {agent.output_summary && <p className="cf-agent-highlight">{agent.output_summary}</p>}
+      {agent.error_message && <p className="cf-agent-error">{agent.error_message}</p>}
+      {canInspect && (
+        <details className="cf-agent-details" open={agent.status === 'error'}>
+          <summary>View work summary</summary>
+          <dl>
+            <div><dt>Input</dt><dd>{agent.input_summary || 'No upstream input yet.'}</dd></div>
+            <div><dt>Activity</dt><dd>{agent.activity_summary || 'Waiting for the orchestrator.'}</dd></div>
+            <div><dt>Decision</dt><dd>{agent.decision_summary || 'No decision recorded yet.'}</dd></div>
+            <div><dt>Output</dt><dd>{agent.output_summary || 'No output produced yet.'}</dd></div>
+          </dl>
+        </details>
+      )}
+    </article>
+  );
+}
+
+function HandoffConnector({ handoff, active }: { handoff?: AgentHandoff; active?: boolean }) {
+  const label = handoff?.artifact_summary || 'Awaiting upstream artifact';
+  return (
+    <div className={`cf-handoff ${handoff ? 'cf-handoff-complete' : ''} ${active ? 'cf-handoff-active' : ''}`}>
+      <span className="cf-handoff-line" aria-hidden="true"><i /></span>
+      <span className="cf-handoff-label"><b>Orchestrator</b> · {label.replace(/^Passed /, '')}</span>
+      <span className="cf-handoff-arrow" aria-hidden="true">↓</span>
+    </div>
+  );
+}
+
+function AgentWorkspace({ course, liveMessage, selectedUnitId, onSelectUnit }: { course: CourseOutline; liveMessage?: string; selectedUnitId?: string; onSelectUnit: (unitId: string) => void }) {
+  const currentUnit = course.units.find(unit => unit.unit_id === selectedUnitId)
+    || course.units.find(unit => unit.unit_id === course.workflow?.current_unit_id)
+    || [...course.units].reverse().find(unit => unit.status === 'complete' || unit.status === 'error')
+    || course.units[0];
+  const unitIndex = currentUnit ? course.units.findIndex(unit => unit.unit_id === currentUnit.unit_id) : -1;
+  const architect = course.course_architect || { agent_name: 'course_architect', status: 'waiting' as AgentStatus, input_summary: '', activity_summary: '', decision_summary: '', output_summary: '', structured_output: {} };
+  const unitAgents = UNIT_AGENT_IDS.map(id => currentUnit?.agents?.find(agent => agent.agent_name === id) || ({ agent_name: id, status: 'waiting', input_summary: '', activity_summary: '', decision_summary: '', output_summary: '', structured_output: {} } as AgentDisplay));
+  const handoffFor = (agentId: string) => currentUnit?.handoffs?.find(handoff => handoff.to_agent === agentId);
+
+  return (
+    <section className="cf-workspace" aria-label="Agent Workspace" aria-live="polite">
+      <header className="cf-workspace-header">
+        <div><p className="act-eyebrow">Specialized AI team</p><h2>Agent Workspace</h2><p>Watch the orchestrator pass instructional-design artifacts through the team.</p></div>
+        <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'error' ? 'Workflow stopped' : 'Workflow in progress'}</span>
+      </header>
+      {liveMessage && <div className="cf-live-message"><span>System / Orchestrator</span>{liveMessage}</div>}
+      <div className="cf-architect-stage">
+        <AgentCard agent={architect} />
+        {course.units.length > 0 && architect.status === 'complete' && (
+          <div className="cf-unit-list"><strong>Created {course.units.length} units</strong><ol>{course.units.map(unit => <li key={unit.unit_id}>{unit.unit_title}</li>)}</ol></div>
+        )}
+      </div>
+      {course.units.length > 0 && (
+        <>
+          <HandoffConnector handoff={handoffFor('standards_analyst')} active={course.workflow?.current_agent === 'standards_analyst'} />
+          <div className="cf-unit-header">
+            <div><p>Current unit</p><h3>Unit {unitIndex + 1} of {course.units.length}: {currentUnit?.unit_title}</h3></div>
+            <div className="cf-unit-tabs" aria-label="Select unit history">
+              {course.units.map((unit, index) => <button key={unit.unit_id} className={unit.unit_id === currentUnit?.unit_id ? 'active' : ''} onClick={() => onSelectUnit(unit.unit_id)} title={unit.unit_title}>{index + 1}<span className={`cf-unit-dot cf-unit-${unit.status}`} /></button>)}
+            </div>
+          </div>
+          <div className="cf-unit-pipeline">
+            {unitAgents.map((agent, index) => (
+              <div key={agent.agent_name}>
+                <AgentCard agent={agent} unitLabel={`Unit ${unitIndex + 1}: ${currentUnit?.unit_title}`} />
+                {index < unitAgents.length - 1 && <HandoffConnector handoff={handoffFor(unitAgents[index + 1].agent_name)} active={course.workflow?.current_agent === unitAgents[index + 1].agent_name} />}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function App() {
   const [prototypes, setPrototypes] = useState<Prototype[]>([]);
   const [selectedPrototypeId, setSelectedPrototypeId] = useState<string>('');
@@ -149,8 +263,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [inputValue, setInputValue] = useState('');
-  const [courseLogs, setCourseLogs] = useState<string[]>([]);
   const [courseResult, setCourseResult] = useState<CourseOutline | null>(null);
+  const [courseLiveMessage, setCourseLiveMessage] = useState('');
+  const [workspaceUnitId, setWorkspaceUnitId] = useState<string>();
   const [expandedCourseUnits, setExpandedCourseUnits] = useState<Set<string>>(new Set());
   const [expandedCourseLessons, setExpandedCourseLessons] = useState<Set<string>>(new Set());
 
@@ -868,16 +983,20 @@ ${getSketchCoachingFocus()}`
     setError('');
     setLoading(true);
     setCourseResult(null);
-    setCourseLogs([]);
+    setCourseLiveMessage('Starting the instructional-design workflow.');
+    setWorkspaceUnitId(undefined);
 
     const events = new EventSource(`${API_BASE}/course-factory/stream?subject=${encodeURIComponent(subject)}`);
-    events.addEventListener('log', event => {
+    events.addEventListener('state', event => {
       const payload = JSON.parse((event as MessageEvent).data);
-      setCourseLogs(previous => [...previous, payload.message]);
+      setCourseResult(payload.course);
+      setCourseLiveMessage(payload.message || 'Workflow state updated.');
+      if (payload.course.workflow?.current_unit_id) setWorkspaceUnitId(payload.course.workflow.current_unit_id);
     });
     events.addEventListener('complete', event => {
       const payload = JSON.parse((event as MessageEvent).data);
       setCourseResult(payload.course);
+      setCourseLiveMessage(payload.message || 'Scope & Sequence workflow complete.');
       setExpandedCourseUnits(new Set([payload.course.units?.[0]?.unit_id].filter(Boolean)));
       setExpandedCourseLessons(new Set());
       setLoading(false);
@@ -889,6 +1008,7 @@ ${getSketchCoachingFocus()}`
         setError(payload.message || 'Course generation failed.');
         if (payload.course) {
           setCourseResult(payload.course);
+          setCourseLiveMessage(`Workflow stopped: ${payload.message || 'An agent failed.'}`);
           setExpandedCourseUnits(new Set([payload.course.units?.[0]?.unit_id].filter(Boolean)));
         }
       } else {
@@ -900,8 +1020,9 @@ ${getSketchCoachingFocus()}`
   };
 
   const handleGenerateAnotherCourse = () => {
-    setCourseLogs([]);
     setCourseResult(null);
+    setCourseLiveMessage('');
+    setWorkspaceUnitId(undefined);
     setExpandedCourseUnits(new Set());
     setExpandedCourseLessons(new Set());
     setError('');
@@ -1000,15 +1121,7 @@ ${getSketchCoachingFocus()}`
             </section>
           )}
 
-          {loading && courseLogs.length > 0 && !courseResult && (
-            <section className="act-card act-course-log" aria-live="polite">
-              <h2>Process Log</h2>
-              <ol>
-                {courseLogs.map((log, index) => <li key={`${log}-${index}`}>{log}</li>)}
-                {loading && <li className="act-log-active">Agents are working...</li>}
-              </ol>
-            </section>
-          )}
+          {courseResult && <AgentWorkspace course={courseResult} liveMessage={courseLiveMessage} selectedUnitId={workspaceUnitId} onSelectUnit={setWorkspaceUnitId} />}
 
           {courseResult && (
             <section className="act-card act-course-results">

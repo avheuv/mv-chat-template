@@ -95,6 +95,23 @@ class CourseFactoryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(completed["essential_questions"])
         self.assertTrue(completed["lesson_level_objectives"])
 
+        state_events = [event_payload(event) for event in events if event.startswith("event: state")]
+        self.assertGreater(len(state_events), 40)
+        architect_working = state_events[0]["course"]
+        self.assertEqual(architect_working["course_architect"]["status"], AgentStatus.WORKING.value)
+        active_agent_snapshots = [
+            state["course"] for state in state_events
+            if state["course"]["workflow"]["current_agent"] == "standards_analyst"
+        ]
+        self.assertTrue(any(
+            snapshot["units"][0]["agents"][0]["status"] == AgentStatus.RECEIVING_INPUT.value
+            for snapshot in active_agent_snapshots
+        ))
+        self.assertTrue(any(
+            snapshot["units"][0]["agents"][0]["status"] == AgentStatus.WORKING.value
+            for snapshot in active_agent_snapshots
+        ))
+
     async def test_failure_marks_only_active_agent_and_preserves_upstream_work(self):
         async def fake_call(instructions, input_payload, result_model, max_tokens=4000):
             if result_model is InquiryResult:

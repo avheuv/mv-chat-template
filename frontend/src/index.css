@@ -325,7 +325,6 @@ body {
 .cf-unit-list ol { margin: 9px 0 0; padding-left: 20px; line-height: 1.6; }
 .cf-handoff { position: relative; display: flex; flex-direction: column; align-items: center; min-height: 58px; color: #94a3b8; }
 .cf-handoff-line { width: 2px; flex: 1; min-height: 13px; background: #cbd5e1; }
-.cf-handoff-label { max-width: 80%; padding: 5px 10px; border: 1px solid #e2e8f0; border-radius: 999px; background: #fff; font-size: 10px; text-align: center; }
 .cf-handoff-arrow { height: 14px; font-weight: 900; }
 .cf-handoff-complete { color: #4f46e5; }
 .cf-handoff-complete .cf-handoff-line { background: #818cf8; }
@@ -338,17 +337,23 @@ body {
 .cf-unit-tabs button.active { border-color: #6366f1; background: #eef2ff; color: #4338ca; }
 .cf-unit-dot { position: absolute; right: 2px; bottom: 2px; width: 6px; height: 6px; border-radius: 50%; background: #cbd5e1; }
 .cf-unit-complete { background: #22c55e; } .cf-unit-in_progress { background: #6366f1; } .cf-unit-error { background: #ef4444; }
-.cf-unit-pipeline { display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr)); gap: 12px; }
-.cf-unit-pipeline > div { display: flex; min-width: 0; flex-direction: column; }
-.cf-unit-pipeline .cf-handoff { flex: 1; transform: rotate(-90deg); min-height: 48px; margin: 6px -30px; }
-.cf-unit-pipeline .cf-handoff-label { transform: rotate(90deg); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-unit-pipeline { display: grid; grid-template-columns: minmax(155px, 1fr) 32px minmax(155px, 1fr) 32px minmax(155px, 1fr) 32px minmax(155px, 1fr) 32px minmax(155px, 1fr); align-items: stretch; gap: 8px; }
+.cf-unit-pipeline > .cf-agent-card { min-width: 0; }
+.cf-handoff-unit { align-self: center; min-height: 0; height: 24px; flex-direction: row; }
+.cf-handoff-unit .cf-handoff-line { width: auto; height: 2px; min-height: 0; min-width: 8px; }
+.cf-handoff-unit .cf-handoff-arrow { width: 12px; height: auto; line-height: 1; }
+.cf-handoff-unit.cf-handoff-active .cf-handoff-line i { margin: -2px 0 0; animation-name: cf-travel-horizontal; }
 @keyframes cf-pulse { 50% { opacity: .25; transform: scale(.65); } }
 @keyframes cf-travel { from { transform: translateY(0); } to { transform: translateY(35px); } }
+@keyframes cf-travel-horizontal { from { transform: translateX(0); } to { transform: translateX(18px); } }
 @media (prefers-reduced-motion: reduce) { .cf-status span, .cf-handoff-line i { animation: none !important; } }
 @media (max-width: 1000px) {
   .cf-unit-pipeline { grid-template-columns: 1fr; }
-  .cf-unit-pipeline .cf-handoff { transform: none; margin: 0; }
-  .cf-unit-pipeline .cf-handoff-label { transform: none; max-width: 80%; }
+  .cf-handoff-unit { justify-self: center; width: 24px; height: 48px; flex-direction: column; }
+  .cf-handoff-unit .cf-handoff-line { width: 2px; height: auto; min-height: 13px; min-width: 0; }
+  .cf-handoff-unit .cf-handoff-arrow { width: auto; height: 14px; font-size: 0; }
+  .cf-handoff-unit .cf-handoff-arrow::after { content: '↓'; font-size: 13px; }
+  .cf-handoff-unit.cf-handoff-active .cf-handoff-line i { margin: 0 0 0 -2px; animation-name: cf-travel; }
 }
 @media (max-width: 640px) {
   .cf-workspace { width: calc(100vw - 24px); padding: 18px; }

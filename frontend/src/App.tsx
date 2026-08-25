@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -146,12 +146,12 @@ type RealtimeFunctionCall = {
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'An unexpected error occurred';
 
 const AGENT_META: Record<string, { name: string; role: string }> = {
-  course_architect: { name: 'Course Architect', role: 'Shapes the course structure and sequence.' },
-  standards_analyst: { name: 'Standards Analyst', role: 'Selects standards that fit the unit.' },
-  alignment_agent: { name: 'Alignment Agent', role: 'Connects standards to course objectives.' },
-  inquiry_designer: { name: 'Inquiry Designer', role: 'Develops essential questions and enduring ideas.' },
-  learning_objective_designer: { name: 'Learning Objective Designer', role: 'Creates measurable lesson-level objectives.' },
-  content_planner: { name: 'Content Planner', role: 'Plans the content needed to meet each objective.' },
+  course_architect: { name: 'Course Structure Agent', role: 'Creates the course structure and organizes it into units.' },
+  standards_analyst: { name: 'Standards Agent', role: 'Selects standards that fit the unit.' },
+  alignment_agent: { name: 'Course Objectives Agent', role: 'Connects course objectives to the unit and standards.' },
+  inquiry_designer: { name: 'Essential Questions Agent', role: 'Develops essential questions and enduring ideas.' },
+  learning_objective_designer: { name: 'Lesson Objectives Agent', role: 'Creates measurable lesson-level objectives.' },
+  content_planner: { name: 'Content Agent', role: 'Plans the content needed to meet each objective.' },
 };
 
 const UNIT_AGENT_IDS = ['standards_analyst', 'alignment_agent', 'inquiry_designer', 'learning_objective_designer', 'content_planner'];
@@ -198,18 +198,16 @@ function AgentCard({ agent }: { agent: AgentDisplay }) {
   );
 }
 
-function HandoffConnector({ handoff, active }: { handoff?: AgentHandoff; active?: boolean }) {
-  const labels: Record<string, string> = {
-    standards_analyst: 'selected standards', alignment_agent: 'course objectives',
-    inquiry_designer: 'essential questions', learning_objective_designer: 'lesson objectives',
-    content_planner: 'planned content',
-  };
-  const label = handoff ? (labels[handoff.to_agent] || 'design artifact') : 'awaiting handoff';
+function HandoffConnector({ handoff, active, unit }: { handoff?: AgentHandoff; active?: boolean; unit?: boolean }) {
+  const state = active ? 'active' : handoff ? 'complete' : 'waiting';
   return (
-    <div className={`cf-handoff ${handoff ? 'cf-handoff-complete' : ''} ${active ? 'cf-handoff-active' : ''}`}>
+    <div
+      className={`cf-handoff ${unit ? 'cf-handoff-unit' : ''} cf-handoff-${state}`}
+      role="img"
+      aria-label={`${state[0].toUpperCase()}${state.slice(1)} handoff`}
+    >
       <span className="cf-handoff-line" aria-hidden="true"><i /></span>
-      <span className="cf-handoff-label">{label}</span>
-      <span className="cf-handoff-arrow" aria-hidden="true">↓</span>
+      <span className="cf-handoff-arrow" aria-hidden="true">{unit ? '→' : '↓'}</span>
     </div>
   );
 }
@@ -230,7 +228,7 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, onSelectUnit }: {
         <div><p className="act-eyebrow">Specialized AI team</p><h2>Agent Workspace</h2><p>Watch the orchestrator pass instructional-design artifacts through the team.</p></div>
         <span className={`cf-workflow-state cf-workflow-${course.workflow?.status || 'not_started'}`}>{course.workflow?.status === 'complete' ? 'Workflow complete' : course.workflow?.status === 'error' ? 'Workflow stopped' : 'Workflow in progress'}</span>
       </header>
-      {liveMessage && <div className="cf-live-message"><span>System / Orchestrator</span>{liveMessage}</div>}
+      {liveMessage && <div className="cf-live-message"><span>Workflow update</span>{liveMessage}</div>}
       <div className="cf-architect-stage">
         <AgentCard agent={architect} />
         {course.units.length > 0 && architect.status === 'complete' && (
@@ -248,10 +246,10 @@ function AgentWorkspace({ course, liveMessage, selectedUnitId, onSelectUnit }: {
           </div>
           <div className="cf-unit-pipeline">
             {unitAgents.map((agent, index) => (
-              <div key={agent.agent_name}>
+              <Fragment key={agent.agent_name}>
                 <AgentCard agent={agent} />
-                {index < unitAgents.length - 1 && <HandoffConnector handoff={handoffFor(unitAgents[index + 1].agent_name)} active={course.workflow?.current_agent === unitAgents[index + 1].agent_name} />}
-              </div>
+                {index < unitAgents.length - 1 && <HandoffConnector unit handoff={handoffFor(unitAgents[index + 1].agent_name)} active={course.workflow?.current_agent === unitAgents[index + 1].agent_name} />}
+              </Fragment>
             ))}
           </div>
         </>

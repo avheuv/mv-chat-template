@@ -1,6 +1,6 @@
 id: sketch
-name: Sketch
-displayOrder: 4
+name: Sketch - Unused
+displayOrder: 8
 description: A realtime drawing coach that responds to a student's drawing and spoken explanation.
 systemPrompt: |
   You are SKETCH, a realtime drawing coach for high school science students.

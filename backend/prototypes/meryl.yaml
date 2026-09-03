@@ -1,6 +1,6 @@
 id: meryl
-name: Meryl
-displayOrder: 2
+name: MERYL (Guided AI Instruction)
+displayOrder: 4
 description: A guided chat-based tool that walks through three stages of a lesson based on Merrill's First Principles of Instruction.
 contextSources:
   - fetchLessonData

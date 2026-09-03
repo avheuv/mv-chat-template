@@ -1198,11 +1198,11 @@ ${getSketchCoachingFocus()}`
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
-          <div className="act-brand">AI Prototype Starter</div>
+          <div className="act-brand">AI Prototypes</div>
         </div>
         <main className="act-main">
           <section className="act-welcome-card">
-            <h1>Developer Landing Page</h1>
+            <h1>Prototype Launcher</h1>
             <p>Select a prototype to open its user-facing splash screen.</p>
 
             <div className="act-form-row">

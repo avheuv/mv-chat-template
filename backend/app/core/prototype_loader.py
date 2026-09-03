@@ -29,6 +29,7 @@ class PrototypeUIConfig(BaseModel):
 class PrototypeConfig(BaseModel):
     id: str
     name: str
+    displayOrder: int = 0
     description: Optional[str] = ""
     systemPrompt: str
     stagePrompts: Optional[Dict[str, str]] = None
@@ -71,6 +72,9 @@ class PrototypeLoader:
         return self.prototypes.get(prototype_id)
 
     def get_all(self) -> List[PrototypeConfig]:
-        return list(self.prototypes.values())
+        return sorted(
+            self.prototypes.values(),
+            key=lambda prototype: (prototype.displayOrder, prototype.name, prototype.id),
+        )
 
 prototype_loader = PrototypeLoader()

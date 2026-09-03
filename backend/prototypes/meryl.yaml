@@ -1,5 +1,6 @@
 id: meryl
 name: Meryl
+displayOrder: 2
 description: A guided chat-based tool that walks through three stages of a lesson based on Merrill's First Principles of Instruction.
 contextSources:
   - fetchLessonData

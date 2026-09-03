@@ -1,6 +1,6 @@
 id: chat_based_assessment_glassbox
 name: Gauge with GlassBox
-displayOrder: 8
+displayOrder: 10
 description: An assessment tool with GlassBox reasoning exposed, to evaluate student understanding.
 contextSources:
   - fetchStudentInterests

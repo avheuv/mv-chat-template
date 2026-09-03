@@ -1,5 +1,6 @@
 id: chat_with_context
 name: Chat with Context
+displayOrder: 3
 description: A basic chat that pulls in the user's profile and lesson context.
 systemPrompt: |
   You are a helpful tutor. Use the provided context to personalize your responses to the student.

@@ -1,5 +1,6 @@
 id: chat_based_assessment
 name: Chat-Based Assessment
+displayOrder: 10
 description: An assessment tool to evaluate student understanding of a lesson topic through a chat interface.
 contextSources:
   - fetchStudentInterests

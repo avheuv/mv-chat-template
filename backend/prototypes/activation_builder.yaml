@@ -1,5 +1,6 @@
 id: activation_builder
 name: Activation Builder
+displayOrder: 1
 description: Generates an engaging lesson hook connecting a topic to a student's interests.
 systemPrompt: |
   You are an expert instructional designer. Your task is to write an engaging 50-100 word activation hook that connects the provided lesson topic to the student's area of interest.

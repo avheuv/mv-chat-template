@@ -1,5 +1,6 @@
 id: voice_based_assessment
 name: Voice-Based Assessment
+displayOrder: 7
 description: A voice-first assessment tool that evaluates student understanding of a lesson topic through a realtime spoken conversation.
 contextSources:
   - fetchStudentInterests

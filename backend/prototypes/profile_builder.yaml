@@ -1,5 +1,6 @@
 id: profile_builder
 name: Profile Builder
+displayOrder: 9
 description: Asks the user questions to build an interest profile, saving it to the database.
 contextSources:
   - fetchStudentInterests

@@ -1,5 +1,5 @@
 id: misconception_glassbox
-name: Misconception GlassBox
+name: GLASSBOX (Exploring AI Reasoning)
 displayOrder: 6
 description: A GlassBox tutor that identifies and addresses the primary misconception in a lesson topic.
 contextSources:

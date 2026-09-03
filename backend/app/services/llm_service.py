@@ -6,6 +6,37 @@ from typing import List, Dict, Any, Optional
 client = AsyncOpenAI(api_key=settings.openai_api_key)
 
 class LLMService:
+    async def generate_twenty_questions_turn(
+        self, *, model: str, instructions: str, input_text: str,
+        previous_response_id: Optional[str], reasoning: Dict[str, Any], max_tokens: int
+    ) -> tuple[str, str, str]:
+        """Run one persisted Responses API turn and preserve every summary block in order."""
+        params: Dict[str, Any] = {
+            "model": model,
+            "instructions": instructions,
+            "input": input_text,
+            "reasoning": reasoning,
+            "max_output_tokens": max_tokens,
+            "store": True,
+        }
+        if previous_response_id:
+            params["previous_response_id"] = previous_response_id
+
+        response = await client.responses.create(**params)
+        question_parts: List[str] = []
+        summary_parts: List[str] = []
+        for item in response.output:
+            if item.type == "reasoning":
+                for block in getattr(item, "summary", None) or []:
+                    if getattr(block, "type", None) == "summary_text":
+                        summary_parts.append(block.text)
+            elif item.type == "message" and item.role == "assistant":
+                for block in getattr(item, "content", None) or []:
+                    if block.type == "output_text":
+                        question_parts.append(block.text)
+
+        return "".join(question_parts).strip(), "\n\n".join(summary_parts), response.id
+
     async def generate_primary_misconception(self, lesson_context: str) -> str:
         """Identify one misconception before the tutoring conversation begins."""
         response = await client.responses.create(

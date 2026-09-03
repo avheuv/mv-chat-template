@@ -34,6 +34,21 @@ class FirestoreService:
 
         if not self.db: return overrides
         doc_ref = self.db.collection("prompts").document(prototype_id)
+
+        # GLASSBOX's game configuration is deployed as code and must replace the
+        # legacy misconception prompt/model in the existing Firestore record.
+        if prototype_id == "misconception_glassbox":
+            await doc_ref.set({
+                "systemPrompt": default_prompt,
+                "model": default_model,
+                "reasoning": {
+                    "effort": "max",
+                    "generate_summary": "auto",
+                    "context": "all_turns",
+                },
+                "_note": "GLASSBOX 20 Questions configuration; synchronized on deployment."
+            }, merge=True)
+
         doc = await doc_ref.get()
 
         if doc.exists:

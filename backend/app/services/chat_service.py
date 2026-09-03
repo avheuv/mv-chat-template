@@ -79,43 +79,48 @@ class ChatService:
 
         # If an initialMessagePrompt exists, let's trigger the LLM to write the first greeting.
         if prototype.initialMessagePrompt:
-            # We temporarily append the prompt as a user message to trigger the greeting
-            # without confusing the AI's internal state logic.
-            trigger_message = Message(
-                id=str(uuid.uuid4()),
-                role="user",
-                content=prototype.initialMessagePrompt
-            )
-            session.messages.append(trigger_message)
-
-            # Prepare messages for LLM
-            llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
-
-            # Call LLM
-            content, structured_data, _, reasoning_summary = await llm_service.generate_response(
-                messages=llm_messages,
-                model=model_to_use,
-                temperature=prototype.temperature,
-                max_tokens=prototype.maxTokens,
-                output_schema=prototype.outputSpec,
-                tools=prototype.tools,
-                reasoning=prototype.reasoning
-            )
-
-            # Remove the hidden trigger prompt so the user never sees it in the chat history
-            session.messages.pop()
-
-            if not content and structured_data and "reply" in structured_data:
-                content = structured_data["reply"]
-
-            # Append the assistant's generated personalized greeting
-            assistant_greeting = Message(
-                id=str(uuid.uuid4()),
-                role="assistant",
-                content=content,
-                reasoning_summary=reasoning_summary
-            )
-            session.messages.append(assistant_greeting)
+            if prototype.ui.mode == "twenty_questions":
+                content, reasoning_summary, response_id = await llm_service.generate_twenty_questions_turn(
+                    model=model_to_use,
+                    instructions=system_content,
+                    input_text=prototype.initialMessagePrompt,
+                    previous_response_id=None,
+                    reasoning=prototype.reasoning or {},
+                    max_tokens=prototype.maxTokens,
+                )
+                session.previous_response_id = response_id
+                session.question_count = 1
+                session.messages.append(Message(
+                    id=str(uuid.uuid4()), role="assistant", content=content,
+                    reasoning_summary=reasoning_summary
+                ))
+            else:
+                # Temporarily add the trigger without exposing it in chat history.
+                trigger_message = Message(
+                    id=str(uuid.uuid4()),
+                    role="user",
+                    content=prototype.initialMessagePrompt
+                )
+                session.messages.append(trigger_message)
+                llm_messages = [{"role": m.role, "content": m.content} for m in session.messages]
+                content, structured_data, _, reasoning_summary = await llm_service.generate_response(
+                    messages=llm_messages,
+                    model=model_to_use,
+                    temperature=prototype.temperature,
+                    max_tokens=prototype.maxTokens,
+                    output_schema=prototype.outputSpec,
+                    tools=prototype.tools,
+                    reasoning=prototype.reasoning
+                )
+                session.messages.pop()
+                if not content and structured_data and "reply" in structured_data:
+                    content = structured_data["reply"]
+                session.messages.append(Message(
+                    id=str(uuid.uuid4()),
+                    role="assistant",
+                    content=content,
+                    reasoning_summary=reasoning_summary
+                ))
 
         # Save session to Firestore (and locally for fallback)
         self._local_sessions[session_id] = session
@@ -139,12 +144,38 @@ class ChatService:
             raise ValueError(f"Prototype {session.prototype_id} not found")
 
         # Append user message
+        if prototype.ui.mode == "twenty_questions" and request.content not in {"Yes", "No"}:
+            raise ValueError("20 Questions answers must be Yes or No.")
+        if prototype.ui.mode == "twenty_questions" and session.question_count >= 20:
+            raise ValueError("This game has reached Question 20. Start a new game to play again.")
+
         user_message = Message(
             id=str(uuid.uuid4()),
             role="user",
             content=request.content
         )
         session.messages.append(user_message)
+
+        if prototype.ui.mode == "twenty_questions":
+            overrides = await firestore_service.get_prototype_overrides(
+                prototype.id, prototype.systemPrompt, prototype.model, prototype.stagePrompts
+            )
+            instructions = next(m.content for m in session.messages if m.role == "system")
+            content, reasoning_summary, response_id = await llm_service.generate_twenty_questions_turn(
+                model=overrides["model"], instructions=instructions, input_text=request.content,
+                previous_response_id=session.previous_response_id,
+                reasoning=prototype.reasoning or {}, max_tokens=prototype.maxTokens,
+            )
+            session.previous_response_id = response_id
+            session.question_count += 1
+            assistant_message = Message(
+                id=str(uuid.uuid4()), role="assistant", content=content,
+                reasoning_summary=reasoning_summary
+            )
+            session.messages.append(assistant_message)
+            self._local_sessions[session.id] = session
+            await firestore_service.set_document("sessions", session.id, session.dict())
+            return ChatResponse(message=assistant_message)
 
         # Increment Meryl turn count
         if prototype.ui.mode == "meryl":

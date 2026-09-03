@@ -24,7 +24,7 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
-    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment';
+    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment' | 'twenty_questions';
     glassbox?: boolean;
     inlineReasoning?: boolean;
     inputs: UIInputConfig[];
@@ -46,6 +46,8 @@ type ChatSession = {
   assessment_objectives?: string[];
   meryl_stage?: number;
   meryl_turn_count?: number;
+  previous_response_id?: string;
+  question_count?: number;
 };
 
 type AssessmentData = {
@@ -599,12 +601,39 @@ function App() {
     }
   };
 
+  const handleTwentyQuestionsAnswer = (answer: 'Yes' | 'No') => {
+    if (!session || loading || (session.question_count || 0) >= 20) return;
+    setLoading(true);
+    setError('');
+    fetch(`${API_BASE}/chat/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: session.id, content: answer })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to continue the game');
+        return fetch(`${API_BASE}/chat/session/${session.id}`);
+      })
+      .then(res => res.json())
+      .then(setSession)
+      .catch((e: unknown) => setError(getErrorMessage(e)))
+      .finally(() => setLoading(false));
+  };
+
+  const handleNewGame = () => {
+    setSession(null);
+    setError('');
+    setInputValue('');
+    setView('splash');
+  };
+
   const activePrototype = prototypes.find(p => p.id === selectedPrototypeId);
   const activePrototypeUI = activePrototype?.ui;
   const isVoiceAssessment = activePrototypeUI?.mode === 'voice_assessment';
   const isSketch = activePrototypeUI?.mode === 'sketch';
   const isCourseFactory = activePrototypeUI?.mode === 'course_factory';
   const isMeryl = activePrototypeUI?.mode === 'meryl';
+  const isTwentyQuestions = activePrototypeUI?.mode === 'twenty_questions';
 
   useEffect(() => {
     if (view !== 'chat' || !isSketch || !canvasRef.current) return;
@@ -1433,6 +1462,24 @@ ${getSketchCoachingFocus()}`
   }
 
   if (view === 'splash' && activePrototypeUI) {
+    if (activePrototypeUI.mode === 'twenty_questions') return (
+      <div className="act-app-shell glassbox-shell">
+        <header className="act-app-header"><div className="act-brand">GLASSBOX</div></header>
+        <main className="act-main">
+          <section className="glassbox-welcome">
+            <p className="glassbox-kicker">GLASSBOX</p>
+            <h1>20 QUESTIONS</h1>
+            <p className="glassbox-lead">Think of anything. Don't tell the AI what it is.</p>
+            <p>Terra has 20 yes/no questions to figure it out. As it plays, GLASSBOX will reveal the reasoning summary OpenAI provides for each move.</p>
+            {error && <div className="act-error-message" role="alert">{error}</div>}
+            <button className="act-primary-btn glassbox-start" onClick={handleStartSession} disabled={loading}>
+              {loading ? 'TERRA IS THINKING…' : "I'VE GOT SOMETHING"}
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+
     return (
       <div className="act-app-shell">
         <div className="act-app-header">
@@ -1484,6 +1531,49 @@ ${getSketchCoachingFocus()}`
 
   // Chat View
   if (!session) return null;
+
+  if (isTwentyQuestions) {
+    const turns = session.messages.filter(message => message.role === 'assistant');
+    const gameOver = (session.question_count || turns.length) >= 20;
+    return (
+      <div className="act-app-shell glassbox-shell">
+        <header className="glassbox-game-header">
+          <div><span>GLASSBOX</span><strong>20 QUESTIONS</strong></div>
+          <button type="button" onClick={handleNewGame}>New Game</button>
+        </header>
+        <main className="act-main glassbox-main">
+          <p className="glassbox-disclosure">OpenAI does not expose the model's hidden chain of thought. This is the most detailed reasoning summary the API provides.</p>
+          <div className="glassbox-timeline">
+            {turns.map((message, turnIndex) => {
+              const messageIndex = session.messages.findIndex(item => item.id === message.id);
+              const answer = session.messages.slice(messageIndex + 1).find(item => item.role === 'user');
+              return <article className="glassbox-turn" key={message.id}>
+                <section className="glassbox-reasoning">
+                  <h2>Reasoning Summary</h2>
+                  {message.reasoning_summary
+                    ? <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{processMathDelimiters(message.reasoning_summary)}</ReactMarkdown>
+                    : <p className="glassbox-empty">No reasoning summary was returned by the API for this turn.</p>}
+                </section>
+                <section className="glassbox-question">
+                  <p>Question {turnIndex + 1} of 20</p>
+                  <h3>{message.content}</h3>
+                  {answer && <span className={`glassbox-recorded-answer answer-${answer.content.toLowerCase()}`}>{answer.content}</span>}
+                </section>
+              </article>;
+            })}
+            {loading && <div className="glassbox-loading" role="status">Terra is reasoning…</div>}
+            <div ref={messagesEndRef} />
+          </div>
+          {error && <div className="act-error-message" role="alert">{error}</div>}
+          {!gameOver && <div className="glassbox-actions" aria-label="Answer the current question">
+            <button type="button" onClick={() => handleTwentyQuestionsAnswer('Yes')} disabled={loading}>Yes</button>
+            <button type="button" onClick={() => handleTwentyQuestionsAnswer('No')} disabled={loading}>No</button>
+          </div>}
+          {gameOver && <div className="glassbox-finished"><p>Terra has used all 20 questions.</p><button type="button" onClick={handleNewGame}>New Game</button></div>}
+        </main>
+      </div>
+    );
+  }
 
   if (isVoiceAssessment || isSketch) {
     const statusLabel = {

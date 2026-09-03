@@ -33,6 +33,39 @@ body {
   min-height: 100vh;
 }
 
+.glassbox-shell { background: #f1efe9; }
+.glassbox-welcome { max-width: 680px; margin: 10vh auto 0; text-align: center; padding: 48px 32px; }
+.glassbox-kicker { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: .24em; color: #b5482d; }
+.glassbox-welcome h1 { margin: 8px 0 28px; font: 900 clamp(42px, 9vw, 88px)/.9 ui-sans-serif, sans-serif; letter-spacing: -.07em; }
+.glassbox-welcome p { max-width: 580px; margin: 0 auto 18px; color: #5b5a55; font-size: 18px; line-height: 1.6; }
+.glassbox-welcome .glassbox-lead { color: #191917; font-size: 24px; font-weight: 700; }
+.glassbox-start { margin-top: 22px; padding: 16px 28px; letter-spacing: .06em; }
+.glassbox-game-header { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; padding: 18px max(20px, calc((100vw - 880px) / 2)); background: rgba(241,239,233,.94); border-bottom: 1px solid #d6d1c7; backdrop-filter: blur(10px); }
+.glassbox-game-header div { display: flex; gap: 12px; align-items: baseline; }
+.glassbox-game-header span { color: #b5482d; font-size: 12px; font-weight: 900; letter-spacing: .16em; }
+.glassbox-game-header strong { font-size: 18px; }
+.glassbox-game-header button, .glassbox-finished button { border: 1px solid #292925; border-radius: 999px; background: transparent; padding: 9px 16px; font-weight: 700; cursor: pointer; }
+.glassbox-main { max-width: 880px; }
+.glassbox-disclosure { margin: 28px 0; padding: 14px 18px; border-left: 3px solid #b5482d; color: #66615a; font-size: 14px; line-height: 1.5; }
+.glassbox-timeline { display: flex; flex-direction: column; gap: 24px; padding-bottom: 150px; }
+.glassbox-turn { overflow: hidden; border: 1px solid #d6d1c7; border-radius: 20px; background: #fff; box-shadow: 0 8px 30px rgba(44,37,30,.05); }
+.glassbox-reasoning { padding: 24px 26px; background: #272724; color: #f1efe9; }
+.glassbox-reasoning h2 { margin: 0 0 15px; color: #dfa38f; font-size: 12px; letter-spacing: .13em; text-transform: uppercase; }
+.glassbox-reasoning p { margin: 0 0 12px; white-space: pre-wrap; line-height: 1.65; }
+.glassbox-reasoning p:last-child { margin-bottom: 0; }
+.glassbox-reasoning .glassbox-empty { color: #bbb6ad; font-style: italic; }
+.glassbox-question { position: relative; padding: 22px 26px 26px; }
+.glassbox-question > p { margin: 0 0 8px; color: #b5482d; font-size: 12px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.glassbox-question h3 { margin: 0; padding-right: 80px; font-size: clamp(21px, 4vw, 30px); line-height: 1.25; }
+.glassbox-recorded-answer { position: absolute; top: 22px; right: 26px; border-radius: 999px; padding: 6px 12px; color: #fff; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+.answer-yes { background: #24714a; } .answer-no { background: #a63e35; }
+.glassbox-actions { position: fixed; z-index: 15; bottom: 22px; left: 50%; display: flex; gap: 12px; transform: translateX(-50%); padding: 10px; border: 1px solid #d6d1c7; border-radius: 999px; background: rgba(255,255,255,.95); box-shadow: 0 10px 35px rgba(44,37,30,.15); }
+.glassbox-actions button { min-width: 130px; border: 0; border-radius: 999px; padding: 15px 26px; background: #272724; color: white; font-size: 16px; font-weight: 900; text-transform: uppercase; cursor: pointer; }
+.glassbox-actions button:last-child { background: #b5482d; }
+.glassbox-actions button:disabled { opacity: .45; cursor: wait; }
+.glassbox-loading, .glassbox-finished { text-align: center; padding: 24px; color: #66615a; font-weight: 700; }
+@media (max-width: 560px) { .glassbox-game-header div { flex-direction: column; gap: 1px; } .glassbox-actions { width: calc(100% - 32px); } .glassbox-actions button { min-width: 0; flex: 1; } }
+
 .act-app-shell {
   min-height: 100vh;
   display: flex;

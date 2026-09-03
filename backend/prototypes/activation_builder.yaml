@@ -1,5 +1,5 @@
 id: activation_builder
-name: ACTIVATE (Personalized Lesson Hooks)
+name: ACTIVATE PART 2 (Personalized Lesson Hooks)
 displayOrder: 1
 description: Generates an engaging lesson hook connecting a topic to a student's interests.
 systemPrompt: |

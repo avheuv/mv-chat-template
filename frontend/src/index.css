@@ -304,8 +304,8 @@ body {
 .cf-workflow-error { background: #fee2e2; color: #991b1b; }
 .cf-workflow-cancelled { background: #f1f5f9; color: #475569; }
 .cf-workflow-awaiting_course_structure_approval { max-width: 220px; background: #fef3c7; color: #92400e; text-align: center; }
-.cf-stop-button { min-height: 34px; padding: 7px 12px; border: 1px solid #b15a63; border-radius: 999px; background: #b15a63; color: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; box-shadow: 0 3px 8px rgba(127, 29, 29, .14); }
-.cf-stop-button:hover:not(:disabled) { border-color: #9f4f57; background: #9f4f57; }
+.cf-stop-button { min-height: 34px; padding: 7px 12px; border: 1px solid #b15a63; border-radius: 999px; background: #ffe0e0; color: #a33030; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; box-shadow: 0 3px 8px rgba(127, 29, 29, .14); }
+.cf-stop-button:hover:not(:disabled) { border-color: #9f4f57; background: #e8cbcb; }
 .cf-stop-button:focus-visible { outline: 3px solid rgba(183, 93, 101, .28); outline-offset: 2px; }
 .cf-stop-button:disabled { cursor: wait; opacity: .7; }
 .cf-live-message { display: flex; align-items: baseline; gap: 12px; margin: 20px 0; padding: 12px 16px; border: 1px solid #dbeafe; border-radius: 14px; background: #eff6ff; color: #334155; font-size: 14px; line-height: 1.4; }
@@ -359,7 +359,7 @@ body {
 .cf-handoff-complete { color: #4f46e5; }
 .cf-handoff-complete .cf-handoff-line { background: #818cf8; }
 .cf-handoff-active .cf-handoff-line i { display: block; width: 6px; height: 6px; margin-left: -2px; border-radius: 50%; background: #4f46e5; animation: cf-travel 1.4s ease-in-out infinite; }
-.cf-unit-header { align-items: center; margin-bottom: 16px; padding: 17px 20px; border: 1px solid #dbe2ea; border-radius: 16px; background: #fff; }
+.cf-unit-header { align-items: center; margin-bottom: 16px; padding: 17px 20px; border: 1px solid #dbe2ea; border-radius: 16px; background: #fff; margin-top:15px; }
 .cf-unit-header p { margin: 0 0 3px; color: #64748b; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
 .cf-unit-header h3 { margin: 0; font-size: 18px; }
 .cf-unit-tabs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }

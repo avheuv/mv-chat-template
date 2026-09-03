@@ -494,7 +494,16 @@ function App() {
           inputs: inputValues
         })
       });
-      if (!res.ok) throw new Error('Failed to start session');
+      if (!res.ok) {
+        let detail = 'Failed to start session';
+        try {
+          const errorBody = await res.json() as { detail?: string };
+          if (errorBody.detail) detail = errorBody.detail;
+        } catch {
+          // Keep the fallback when the server did not return JSON.
+        }
+        throw new Error(detail);
+      }
       const data = await res.json();
       resetVoiceConnection();
 

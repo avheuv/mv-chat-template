@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List
@@ -13,6 +15,7 @@ from app.core.config import settings
 import httpx
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.get("/health")
 async def health_check():
@@ -131,8 +134,12 @@ async def start_chat(request: ChatStartRequest):
         return session
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception:
+        logger.exception("Failed to start chat session for prototype %s", request.prototype_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to start session. Check the backend log for the upstream error.",
+        )
 
 from pydantic import BaseModel
 

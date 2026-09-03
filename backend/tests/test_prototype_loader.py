@@ -37,3 +37,14 @@ def test_get_all_uses_display_order_independent_of_filesystem_order(tmp_path):
         "second",
         "third",
     ]
+
+
+def test_twenty_questions_uses_current_reasoning_summary_field():
+    prototype = PrototypeLoader().get_prototype("misconception_glassbox")
+
+    assert prototype is not None
+    assert prototype.reasoning == {
+        "effort": "max",
+        "summary": "auto",
+        "context": "all_turns",
+    }

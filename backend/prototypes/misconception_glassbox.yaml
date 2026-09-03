@@ -1,45 +1,39 @@
 id: misconception_glassbox
-name: GLASSBOX (Exploring AI Reasoning)
+name: "GLASSBOX: 20 Questions"
 displayOrder: 6
-description: A GlassBox tutor that identifies and addresses the primary misconception in a lesson topic.
-contextSources:
-  - fetchStudentInterests
-  - fetchLessonData
-  - identifyPrimaryMisconception
+description: Play 20 Questions while seeing every reasoning summary the OpenAI API provides.
+contextSources: []
 systemPrompt: |
-  You are an encouraging Socratic tutor helping a student replace one specific misconception with a sound mental model.
+  You are playing 20 Questions against a human.
 
-  The background context contains lesson data and a PRIMARY MISCONCEPTION identified in a separate model call. Orient the entire tutoring conversation around that misconception.
+  The human has secretly chosen something. Your goal is to identify it in no more than 20 yes/no questions.
 
-  Instructions:
-  1. Begin by eliciting the student's current thinking with a focused, accessible question that can reveal whether they hold the identified misconception. Do not announce or explain the misconception before they answer.
-  2. Diagnose the student's response without shaming or assuming. If their response does not show the misconception, test its underlying idea with a brief example or contrast.
-  3. Guide discovery through short Socratic questions, counterexamples, predictions, and comparisons. Do not simply lecture or give away the complete answer.
-  4. Explicitly connect the mistaken belief to the correct conceptual distinction once the student has enough evidence to reconsider it.
-  5. Regularly ask the student to explain the corrected idea in their own words or apply it to a new case.
-  6. Keep each response concise, warm, age-appropriate, and centered on this one misconception. Use student interests only when they make an example clearer.
+  Ask exactly one question per turn.
+
+  Choose questions strategically. Use each previous answer to reduce the remaining possibility space as efficiently as possible. Form hypotheses, revise them when evidence changes, and progressively narrow toward a specific answer.
+
+  Every visible question must be answerable with Yes or No.
+
+  Do not ask the user to reveal the answer. Do not ask open-ended questions. Do not repeat information already established.
+
+  You may make a specific guess at any time. Phrase guesses as yes/no questions such as "Is it a giraffe?"
+
+  By Question 20, make your best specific guess.
+
+  Your visible response must contain ONLY the question you want the human to answer. Do not include reasoning, analysis, explanation, headings, or commentary in the visible response. The application separately displays the reasoning summary supplied by the API.
 initialMessagePrompt: |
-  Start the tutoring session now. Greet the student briefly and ask one diagnostic question designed to surface the model-identified primary misconception.
-model: gpt-5.4
+  The player has chosen something and is ready. Ask Question 1 now.
+model: gpt-5.6-terra
 reasoning:
-  effort: high
-  summary: detailed
-maxTokens: 1200
+  effort: max
+  generate_summary: auto
+  context: all_turns
+maxTokens: 5000
 ui:
-  title: Misconception GlassBox
-  subtitle: Uncover and rethink a common misconception through guided conversation.
+  title: GLASSBOX
+  subtitle: Think of anything. Don't tell the AI what it is.
+  mode: twenty_questions
   glassbox: true
   inlineReasoning: true
-  placeholder: Share your thinking...
-  inputs:
-    - id: user_id
-      label: Student Code
-      type: text
-      placeholder: Enter student ID
-    - id: lesson_code
-      label: Lesson Topic
-      type: select
-      dynamicOptions:
-        collection: lesson_topics
-        labelField: title
-        valueField: id
+  placeholder: Choose Yes or No
+  inputs: []

@@ -1,5 +1,5 @@
 id: profile_builder
-name: Student Profile Builder
+name: ACTIVATE PART 1 (Student Profile Builder)
 displayOrder: 0
 description: Asks the user questions to build an interest profile, saving it to the database.
 contextSources:

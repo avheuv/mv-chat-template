@@ -1008,28 +1008,40 @@ ${getSketchCoachingFocus()}`
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
+    document.body.appendChild(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   const courseToCsv = (course: CourseOutline) => {
-    const rows = [['subject', 'unit_id', 'unit_title', 'lesson_id', 'lesson_title', 'objective_id', 'objective_text', 'activation_id', 'activation_text']];
-    course.units.forEach(unit => {
-      unit.lessons.forEach(lesson => {
-        rows.push([
-          course.subject,
-          unit.unit_id,
-          unit.unit_title,
-          lesson.lesson_id,
-          lesson.lesson_title,
-          lesson.learning_objective.objective_id,
-          lesson.learning_objective.objective_text,
-          lesson.activation.activation_id,
-          lesson.activation.activation_text
-        ]);
-      });
+    const rows: string[][] = [[
+      'Unit',
+      'Standards',
+      'Course Objectives',
+      'Essential Questions',
+      'Lesson Objectives',
+      'Content',
+    ]];
+
+    course.units.forEach((unit, index) => {
+      const scope = unit.scope_sequence;
+      rows.push([
+        `Unit ${index + 1}: ${unit.unit_title}`,
+        scope?.standards_addressed.map(standard =>
+          `${standard.standard_id}: ${standard.description}${standard.source ? ` (${standard.source})` : ''}`
+        ).join('\n') ?? '',
+        scope?.course_level_objectives.map(objective => objective.objective_text).join('\n') ?? '',
+        scope?.essential_questions.map(question => question.question_text).join('\n') ?? '',
+        scope?.lesson_level_objectives.map(objective => objective.objective_text).join('\n') ?? '',
+        scope?.content.map(item => `${item.label}${item.category ? ` — ${item.category}` : ''}`).join('\n') ?? '',
+      ]);
     });
-    return rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+
+    const csv = rows
+      .map(row => row.map(value => `"${value.replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    return `\uFEFF${csv}`;
   };
 
   const connectCourseStream = (url: string) => {
@@ -1358,7 +1370,7 @@ ${getSketchCoachingFocus()}`
 
               <div className="act-course-actions">
                 <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.json`, JSON.stringify(courseResult, null, 2), 'application/json')}>Download JSON</button>
-                <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.csv`, courseToCsv(courseResult), 'text/csv')}>Download CSV</button>
+                <button className="act-secondary-btn" onClick={() => downloadTextFile(`${courseResult.subject}.csv`, courseToCsv(courseResult), 'text/csv;charset=utf-8')}>Download CSV</button>
                 <button className="act-primary-btn" onClick={handleGenerateAnotherCourse}>Generate Another Course</button>
               </div>
             </section>

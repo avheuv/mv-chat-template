@@ -43,7 +43,7 @@ class FirestoreService:
                 "model": default_model,
                 "reasoning": {
                     "effort": "max",
-                    "generate_summary": "auto",
+                    "summary": "auto",
                     "context": "all_turns",
                 },
                 "_note": "GLASSBOX 20 Questions configuration; synchronized on deployment."

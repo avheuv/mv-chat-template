@@ -1,0 +1,35 @@
+{
+  "quadratics": {
+    "title": "Quadratic Equations",
+    "profiles": {
+      "blank_slate": [],
+      "confident_novice": [
+        {"id": "q-shape", "statement": "Every quadratic graph is a U shape that opens upward.", "confidence": 0.82, "sources": ["lesson_config:quadratics"]}
+      ],
+      "uncertain": [
+        {"id": "q-degree", "statement": "A quadratic probably has something to do with an x squared term.", "confidence": 0.35, "sources": ["lesson_config:quadratics"]}
+      ]
+    },
+    "evaluation": {
+      "criteria": ["A quadratic has degree two", "The leading coefficient determines whether its parabola opens upward or downward", "Roots are x-values where the function equals zero"],
+      "misconceptions": {"only_upward": "Every quadratic parabola opens upward", "one_root": "Every quadratic has exactly one real root"}
+    }
+  },
+  "biology": {
+    "title": "Cell Structure",
+    "profiles": {
+      "blank_slate": [],
+      "confident_novice": [
+        {"id": "b-energy", "statement": "Mitochondria create energy from nothing for the cell.", "confidence": 0.84, "sources": ["lesson_config:biology"]}
+      ],
+      "uncertain": [
+        {"id": "b-parts", "statement": "Cells seem to contain smaller parts with different jobs.", "confidence": 0.3, "sources": ["lesson_config:biology"]}
+      ]
+    },
+    "evaluation": {
+      "criteria": ["Organelles perform specialized cellular functions", "Mitochondria transform chemical energy into ATP", "Cell membranes regulate movement into and out of cells"],
+      "misconceptions": {"energy_from_nothing": "Mitochondria create energy from nothing", "all_cells_same": "All cells contain exactly the same structures"}
+    }
+  },
+  "default": {"title": "General Math", "profiles": {"blank_slate": [], "confident_novice": [], "uncertain": []}, "evaluation": {"criteria": [], "misconceptions": {}}}
+}

@@ -12,10 +12,47 @@ from app.services.course_factory_service import course_factory_service
 from app.models.course_factory import CourseStructureApprovalRequest
 from app.services.firestore_service import firestore_service
 from app.core.config import settings
+from app.models.teachbot import RestoreRequest, SnapshotRequest, TeachBotStartRequest, TeachBotTurnRequest
+from app.services.teachbot_service import teachbot_service
 import httpx
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+@router.post("/api/teachbot/start")
+async def start_teachbot(request: TeachBotStartRequest):
+    try:
+        return await teachbot_service.start(request.lesson_code, request.learner_profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+@router.post("/api/teachbot/turn")
+async def teachbot_turn(request: TeachBotTurnRequest):
+    try:
+        return await teachbot_service.turn(request.session_id, request.content, request.request_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+@router.post("/api/teachbot/{session_id}/snapshot")
+async def create_teachbot_snapshot(session_id: str, request: SnapshotRequest):
+    try:
+        return await teachbot_service.snapshot(session_id, request.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@router.post("/api/teachbot/{session_id}/restore")
+async def restore_teachbot_snapshot(session_id: str, request: RestoreRequest):
+    try:
+        return await teachbot_service.restore(session_id, request.snapshot_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@router.get("/api/teachbot/{session_id}/export")
+async def export_teachbot(session_id: str):
+    session = await teachbot_service._get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="TeachBot session not found")
+    return teachbot_service.public(session)
 
 @router.get("/health")
 async def health_check():

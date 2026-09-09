@@ -33,6 +33,59 @@ body {
   min-height: 100vh;
 }
 
+/* TEACHBOT keeps the template's neutral cards while giving experiment state a distinct lab workspace. */
+.tb-shell { min-height: 100vh; background: #f5f6f2; color: #18332d; }
+.tb-header { min-height: 72px; display: flex; align-items: center; gap: 24px; padding: 12px 28px; border-bottom: 1px solid #d9ddd6; background: rgba(255,255,255,.94); }
+.tb-header > div { display: flex; flex-direction: column; margin-right: auto; letter-spacing: .04em; }
+.tb-header > div span { color: #6d7872; font-size: 12px; text-transform: capitalize; }
+.tb-header button, .tb-header select { border: 1px solid #cad1cc; border-radius: 9px; background: white; padding: 8px 11px; cursor: pointer; }
+.tb-header nav { display: flex; gap: 8px; }
+.tb-start { max-width: 640px; margin: 8vh auto; padding: 44px; border: 1px solid #d9ddd6; border-radius: 22px; background: white; box-shadow: 0 20px 60px rgba(28,55,45,.08); }
+.tb-kicker, .tb-section-label, .tb-panel-title p { margin: 0; color: #258465; font-size: 11px; font-weight: 800; letter-spacing: .15em; }
+.tb-start h1 { margin: 8px 0; font-size: clamp(36px, 6vw, 58px); line-height: 1; letter-spacing: -.045em; }
+.tb-start > p:not(.tb-kicker) { color: #63706b; line-height: 1.6; }
+.tb-start label { display: grid; gap: 7px; margin-top: 20px; font-size: 13px; font-weight: 700; }
+.tb-start select { height: 48px; border: 1px solid #cad1cc; border-radius: 10px; padding: 0 12px; background: white; }
+.tb-primary, .tb-compose button { margin-top: 24px; border: 0; border-radius: 10px; padding: 13px 18px; background: #176c53; color: white; font-weight: 800; cursor: pointer; }
+.tb-notice { padding: 11px 28px; background: #e8f3ed; color: #52625c; font-size: 13px; text-align: center; }
+.tb-grid { display: grid; grid-template-columns: minmax(400px, 1.5fr) minmax(330px, 1fr); gap: 20px; max-width: 1440px; height: calc(100vh - 112px); margin: auto; padding: 20px; }
+.tb-chat, .tb-side > section, .tb-side > details { border: 1px solid #d9ddd6; border-radius: 16px; background: white; }
+.tb-chat { display: flex; flex-direction: column; min-height: 0; padding: 18px; }
+.tb-messages { flex: 1; overflow-y: auto; padding: 12px; }
+.tb-empty { max-width: 430px; margin: 15vh auto 0; text-align: center; color: #6d7872; }
+.tb-empty span { color: #258465; font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+.tb-empty h2 { margin: 8px; color: #18332d; font-size: 29px; }
+.tb-message { max-width: 78%; margin: 16px 0; padding: 14px 16px; border-radius: 15px; background: #eef1ed; }
+.tb-message.tb-user { margin-left: auto; background: #dceae4; }
+.tb-message small { color: #63706b; font-weight: 700; }
+.tb-message p { margin: 6px 0 0; line-height: 1.5; }
+.tb-message em { display: block; margin-top: 10px; color: #9b5a15; font-size: 12px; }
+.tb-compose { display: flex; gap: 10px; border-top: 1px solid #e1e4e0; padding-top: 15px; }
+.tb-compose textarea { min-height: 64px; flex: 1; resize: none; border: 1px solid #cad1cc; border-radius: 11px; padding: 12px; font: inherit; }
+.tb-compose button { margin: 0; }
+.tb-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; }
+.tb-side > section, .tb-side > details { padding: 17px; }
+.tb-panel-title { display: flex; align-items: center; justify-content: space-between; }
+.tb-panel-title h2 { margin: 3px 0 10px; font-size: 20px; }
+.tb-panel-title > span { padding: 4px 9px; border-radius: 99px; background: #e8f3ed; }
+.tb-belief { margin: 9px 0; padding: 12px; border: 1px solid #e1e4e0; border-radius: 10px; }
+.tb-belief.changed { border-color: #49a37f; animation: tb-flash 1.8s ease; }
+@keyframes tb-flash { from { background: #ccebdc; } to { background: white; } }
+.tb-belief p { margin: 0 0 10px; }
+.tb-belief > div { position: relative; height: 7px; margin-bottom: 5px; border-radius: 99px; background: #e5e9e6; }
+.tb-belief > div span { display: block; height: 100%; border-radius: inherit; background: #258465; }
+.tb-belief > div small { position: absolute; right: 0; top: -19px; }
+.tb-belief > small, .tb-muted, .tb-side > section > small, .tb-heuristic { color: #75817c; font-size: 11px; }
+.tb-eval { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.tb-eval > div { min-height: 65px; padding: 10px; border-radius: 9px; background: #f3f5f2; }
+.tb-eval span { float: right; color: #258465; font-weight: 800; }
+.tb-eval p { margin: 5px 0 0; font-size: 11px; }
+.tb-side details summary { cursor: pointer; font-weight: 750; }
+.tb-side pre { overflow: auto; font-size: 10px; }
+.tb-history { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e1e4e0; font-size: 12px; }
+.tb-error { color: #a94343; font-size: 13px; }
+@media (max-width: 850px) { .tb-grid { display: block; height: auto; } .tb-chat { min-height: 70vh; } .tb-side { margin-top: 16px; } .tb-header { flex-wrap: wrap; } .tb-header nav { width: 100%; overflow-x: auto; } }
+
 .glassbox-shell { background: #f1efe9; }
 .glassbox-welcome { max-width: 680px; margin: 10vh auto 0; text-align: center; padding: 48px 32px; }
 .glassbox-kicker { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: .24em; color: #b5482d; }

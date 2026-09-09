@@ -3,9 +3,24 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from typing import List, Dict, Any, Optional
 
-client = AsyncOpenAI(api_key=settings.openai_api_key)
+# A placeholder permits configuration-free test/import paths; live calls still fail
+# clearly at the provider until OPENAI_API_KEY is configured.
+client = AsyncOpenAI(api_key=settings.openai_api_key or "not-configured")
 
 class LLMService:
+    async def generate_teachbot_proposal(
+        self, messages: List[Dict[str, str]], model: str, temperature: float, max_tokens: int
+    ) -> Dict[str, Any]:
+        """Model adapter for TeachBot; belief validation remains in TeachBotService."""
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return json.loads(response.choices[0].message.content or "{}")
+
     async def generate_twenty_questions_turn(
         self, *, model: str, instructions: str, input_text: str,
         previous_response_id: Optional[str], reasoning: Dict[str, Any], max_tokens: int

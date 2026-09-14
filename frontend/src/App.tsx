@@ -932,6 +932,8 @@ ${getSketchCoachingFocus()}`
         ? `Acknowledge that the student met sub-objective ${completedIndex + 1}: "${objectives[completedIndex]}". Then transition to sub-objective ${nextIncompleteIndex + 1}: "${objectives[nextIncompleteIndex]}" and ask one focused question about it.`
         : `Give brief supportive feedback and ask one focused follow-up question about current sub-objective ${nextIncompleteIndex + 1}: "${objectives[nextIncompleteIndex]}".`;
 
+    console.log("NEXT ALEX INSTRUCTION:", transitionInstruction);
+    
     dc.send(JSON.stringify({
       type: 'response.create',
       response: {

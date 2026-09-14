@@ -807,6 +807,13 @@ ${getSketchCoachingFocus()}`
 
           if (assessmentToolCall) {
             const args = JSON.parse(assessmentToolCall.arguments || '{}');
+
+            console.log("ALEX TOOL CALL:", {
+              name: assessmentToolCall.name,
+              call_id: assessmentToolCall.call_id,
+              arguments: args
+            });
+            
             completeAssessmentToolCall(assessmentToolCall.call_id, args);
             applyAssessmentToolArgs(args);
           } else if (!pushToTalkActiveRef.current) {
@@ -890,6 +897,17 @@ ${getSketchCoachingFocus()}`
     const nextIncompleteIndex = scores.findIndex(score => score < 85);
     const allComplete = nextIncompleteIndex === -1;
 
+    console.log("APP → ALEX TOOL RESULT:", {
+      ok: true,
+      displayed_to_student: {
+        current_sub_objective_index: nextAssessmentData.current_sub_objective_index,
+        sub_objective_scores: scores,
+        summary: nextAssessmentData.summary,
+        tip: nextAssessmentData.tip || '',
+        submit_enabled: allComplete
+      }
+    });
+    
     dc.send(JSON.stringify({
       type: 'conversation.item.create',
       item: {

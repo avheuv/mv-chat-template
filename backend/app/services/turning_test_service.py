@@ -65,7 +65,7 @@ async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int]:
 
 
 def _pangram_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {settings.pangram_api_key}", "Content-Type": "application/json"}
+    return {"x-api-key": settings.pangram_api_key, "Content-Type": "application/json"}
 
 
 def _provider_error(response: httpx.Response) -> TurningTestError:

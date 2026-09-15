@@ -78,17 +78,29 @@ async function jsonRequest(url: string, init?: RequestInit) {
 
 export default function TurningTest() {
   const [promptId, setPromptId] = useState(''); const [answer, setAnswer] = useState(''); const [undo, setUndo] = useState<string | null>(null);
+  const [rewritePrompt, setRewritePrompt] = useState('Make this passage sound more natural while preserving its meaning.');
+  const [selection, setSelection] = useState({ start: 0, end: 0 }); const answerRef = useRef<HTMLTextAreaElement>(null); const promptRequest = useRef(0);
   const [running, setRunning] = useState<string | null>(null); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [history, setHistory] = useState<EvalRun[]>([]); const [actions, setActions] = useState<string[]>([]); const manualLogged = useRef(false);
   const selected = TURNING_TEST_PROMPTS.find(prompt => prompt.id === promptId); const wordCount = countWords(answer); const latest = history.at(-1);
   const stale = Boolean(latest && (latest.text !== answer || latest.promptId !== promptId));
   const log = (action: string) => setActions(current => [...current, action]);
-  const edit = (value: string, pasted = false) => { setAnswer(value); setUndo(null); if (!manualLogged.current) { log(pasted ? 'Pasted text' : 'Manual edit'); manualLogged.current = true; } };
-  const changePrompt = (value: string) => { if (promptId && value !== promptId) { setNotice('Prompt changed. Your draft was preserved; update it for the new question.'); log('Prompt change'); } setPromptId(value); setUndo(null); };
-  const runAI = async (action: 'generate' | 'rewrite' | 'grammar') => {
-    if (running || !selected) return setError('Choose a prompt first.'); if (action !== 'generate' && !answer.trim()) return setError(`Write a draft before using ${action}.`);
-    setRunning(action); setError(''); const previous = answer;
-    try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, prompt_id: selected.id, question: selected.question, answer }) }); const next = String(data.answer ?? ''); if (!next.trim()) throw new Error('The AI returned an empty answer.'); setAnswer(next); setUndo(previous); manualLogged.current = false; log(action[0].toUpperCase() + action.slice(1)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'The AI action failed. Your draft was preserved.'); } finally { setRunning(null); }
+  const edit = (value: string, pasted = false) => { setAnswer(value); setUndo(null); setSelection({ start: 0, end: 0 }); if (!manualLogged.current) { log(pasted ? 'Pasted text' : 'Manual edit'); manualLogged.current = true; } };
+  const captureSelection = () => { const field = answerRef.current; if (field) setSelection({ start: field.selectionStart, end: field.selectionEnd }); };
+  const changePrompt = async (value: string) => {
+    const requestId = ++promptRequest.current; setPromptId(value); setAnswer(''); setUndo(null); setSelection({ start: 0, end: 0 }); setError(''); setNotice(''); setHistory([]); setActions([]); manualLogged.current = false;
+    const nextPrompt = TURNING_TEST_PROMPTS.find(prompt => prompt.id === value); if (!nextPrompt) return;
+    setRunning('generate'); setNotice('Generating your 300-word starting text…');
+    try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'generate', prompt_id: nextPrompt.id, question: nextPrompt.question, answer: '' }) }); if (requestId !== promptRequest.current) return; const next = String(data.answer ?? ''); if (!next.trim()) throw new Error('The AI returned an empty answer.'); setAnswer(next); setNotice('Starting text: AI-generated.'); setActions(['AI-generated starting text']); }
+    catch (reason) { if (requestId === promptRequest.current) { setError(reason instanceof Error ? reason.message : 'Starting text could not be generated.'); setNotice(''); } }
+    finally { if (requestId === promptRequest.current) setRunning(null); }
+  };
+  const rewriteSelection = async () => {
+    if (running || !selected) return setError('Choose a prompt first.'); const { start, end } = selection;
+    if (start === end) { setError('Highlight the text you want to rewrite.'); answerRef.current?.focus(); return; }
+    const highlighted = answer.slice(start, end); const previous = answer; setRunning('rewrite'); setError('');
+    try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rewrite', prompt_id: selected.id, question: selected.question, answer: highlighted, custom_prompt: rewritePrompt }) }); const replacement = String(data.answer ?? ''); if (!replacement.trim()) throw new Error('The AI returned an empty rewrite.'); const next = previous.slice(0, start) + replacement + previous.slice(end); setAnswer(next); setUndo(previous); setSelection({ start, end: start + replacement.length }); manualLogged.current = false; log('Rewrote highlighted text'); window.setTimeout(() => { const field = answerRef.current; field?.focus(); field?.setSelectionRange(start, start + replacement.length); }, 0); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Rewrite failed. Your draft was preserved.'); } finally { setRunning(null); }
   };
   const undoAI = () => { if (undo === null || running) return; setAnswer(undo); setUndo(null); manualLogged.current = false; log('Undo'); };
   const evaluate = async () => {
@@ -101,11 +113,15 @@ export default function TurningTest() {
   };
   const deltas = useMemo(() => (run: EvalRun, index: number) => { const previous = history[index - 1]; if (!previous || previous.promptId !== run.promptId || previous.requestedModel !== run.requestedModel || previous.result.version !== run.result.version) return null; return ['fraction_ai', 'fraction_ai_assisted', 'fraction_human'].map(key => { const a = fraction(run.result, key), b = fraction(previous.result, key); return a === undefined || b === undefined ? 'n/a' : `${((a - b) * 100) >= 0 ? '+' : ''}${((a - b) * 100).toFixed(1)} pp`; }).join(' · '); }, [history]);
   return <div className="tt-shell"><main className="tt-main">
-    <header className="tt-intro"><h1>Turning Test</h1><p>Explore how writing by yourself or with AI tools affects what Pangram’s detector infers.</p></header>
+    <header className="tt-intro"><h1>Turning Test</h1><p>Can you make AI-written text pass as human?</p></header>
     <section className="tt-card tt-compose"><label htmlFor="tt-prompt"><strong>Select a prompt</strong></label><select id="tt-prompt" value={promptId} onChange={event => changePrompt(event.target.value)} disabled={Boolean(running)}><option value="">Choose a prompt</option>{TURNING_TEST_PROMPTS.map(prompt => <option key={prompt.id} value={prompt.id}>{prompt.subject}: {prompt.question}</option>)}</select>{notice && <p className="tt-notice" role="status">{notice}</p>}
-      <label htmlFor="tt-answer"><strong>Your answer</strong></label><textarea id="tt-answer" value={answer} onChange={event => edit(event.target.value)} onPaste={() => { if (!manualLogged.current) { log('Pasted text'); manualLogged.current = true; } }} disabled={Boolean(running)} placeholder="Write your answer here…" />
-      <p className={`tt-count ${wordCount < EVALUATION_MIN_WORDS ? 'short' : ''}`}>{wordCount} words · Target: 60–100 · Pangram minimum: {EVALUATION_MIN_WORDS}</p>
-      <div className="tt-tools-heading"><h2>AI Tools</h2><button type="button" className="tt-link" onClick={undoAI} disabled={undo === null || Boolean(running)}>Undo AI edit</button></div><div className="tt-tools">{(['generate', 'rewrite', 'grammar'] as const).map(action => <button type="button" key={action} onClick={() => runAI(action)} disabled={Boolean(running) || !selected || (action !== 'generate' && !answer.trim())}>{running === action ? `${action[0].toUpperCase() + action.slice(1)} running…` : action[0].toUpperCase() + action.slice(1)}</button>)}</div>
+      <p className="tt-instructions">Edit it yourself or highlight a passage and use the AI Rewrite tool. When you’re ready, see what Pangram thinks.</p>
+      <label htmlFor="tt-answer"><strong>Your answer</strong></label><textarea ref={answerRef} id="tt-answer" value={answer} onChange={event => edit(event.target.value)} onSelect={captureSelection} onKeyUp={captureSelection} onMouseUp={captureSelection} onPaste={() => { if (!manualLogged.current) { log('Pasted text'); manualLogged.current = true; } }} disabled={Boolean(running)} placeholder={selected ? 'Your AI-generated starting text will appear here…' : 'Choose a prompt to generate starting text…'} />
+      <p className={`tt-count ${wordCount < EVALUATION_MIN_WORDS ? 'short' : ''}`}>{wordCount} words · Starting target: 300 · Pangram minimum: {EVALUATION_MIN_WORDS}</p>
+      <div className="tt-tools-heading"><h2>AI Tool: Rewrite</h2><button type="button" className="tt-link" onClick={undoAI} disabled={undo === null || Boolean(running)}>Undo AI edit</button></div>
+      <p className="tt-tool-help">Highlight only the passage you want to change, then tell the AI how to rewrite it. Rewrite never changes the whole document unless you select the whole document.</p>
+      <label htmlFor="tt-rewrite-prompt"><strong>Rewrite instructions</strong></label><textarea className="tt-rewrite-prompt" id="tt-rewrite-prompt" value={rewritePrompt} onChange={event => setRewritePrompt(event.target.value)} disabled={Boolean(running)} />
+      <div className="tt-tools"><button type="button" onMouseDown={event => event.preventDefault()} onClick={rewriteSelection} disabled={Boolean(running) || !selected}>{running === 'rewrite' ? 'Rewriting selection…' : 'Rewrite highlighted text'}</button></div>
       <button type="button" className="tt-evaluate" onClick={evaluate} disabled={Boolean(running) || !selected || wordCount < EVALUATION_MIN_WORDS}>{running === 'evaluation' ? 'Pangram is evaluating…' : 'Run Pangram Eval'}</button>{wordCount < EVALUATION_MIN_WORDS && <p className="tt-guidance">Add {EVALUATION_MIN_WORDS - wordCount} more {EVALUATION_MIN_WORDS - wordCount === 1 ? 'word' : 'words'} to enable evaluation. Text is never padded automatically.</p>}{error && <p className="tt-error" role="alert">{error}</p>}
     </section>
     {latest ? <Report run={latest} stale={stale} /> : <section className="tt-report tt-empty"><p className="tt-eyebrow">Pangram Report</p><h2>No evaluation yet</h2><p>Choose a prompt, write at least {EVALUATION_MIN_WORDS} words, then run the evaluation.</p></section>}

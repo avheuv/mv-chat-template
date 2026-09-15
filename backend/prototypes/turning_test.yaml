@@ -5,13 +5,13 @@ description: Compare writing processes with Pangram's AI-authorship detector.
 systemPrompt: Turning Test uses dedicated action prompts in the backend service.
 model: gpt-4o-mini
 temperature: 0.2
-maxTokens: 500
+maxTokens: 800
 config:
   pangramModel: pangram-4
   pangramApiBaseUrl: https://text.external-api.pangram.com
   evaluationMinWords: 50
 ui:
   title: Turning Test
-  subtitle: Explore how writing and AI-assisted editing affect a detector's output.
+  subtitle: Can you make AI-written text pass as human?
   mode: turning_test
   inputs: []

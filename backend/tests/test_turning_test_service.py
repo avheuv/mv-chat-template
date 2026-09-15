@@ -5,6 +5,7 @@ import pytest
 
 from app.core.config import settings
 from app.core.prototype_loader import prototype_loader
+from app.models.turning_test import TurningTestAIRequest
 from app.services import turning_test_service as service
 
 
@@ -23,6 +24,50 @@ def turning_test_config(monkeypatch):
 def test_count_words_ignores_repeated_whitespace():
     assert service.count_words(" one   two\n\tthree ") == 3
     assert service.count_words(" \n\t ") == 0
+
+
+def test_generate_prompt_requests_approximately_300_words():
+    request = TurningTestAIRequest(
+        action="generate", prompt_id="science", question="Why is the sky blue?", answer=""
+    )
+
+    messages = service._input(request)
+
+    assert "approximately 300 words" in messages[0]["content"]
+    assert "Why is the sky blue?" in messages[1]["content"]
+
+
+def test_rewrite_prompt_contains_only_selected_passage_and_custom_instruction():
+    request = TurningTestAIRequest(
+        action="rewrite",
+        prompt_id="science",
+        question="Why is the sky blue?",
+        answer="This is the selected sentence.",
+        custom_prompt="Use shorter sentences.",
+    )
+
+    messages = service._input(request)
+
+    assert "This is the selected sentence." in messages[1]["content"]
+    assert "Use shorter sentences." in messages[1]["content"]
+    assert "highlighted passage" in messages[0]["content"]
+
+
+def test_rewrite_returns_without_enforcing_generation_word_count(monkeypatch):
+    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+
+    class Response:
+        output_text = "A concise replacement."
+
+    async def create(**kwargs):
+        return Response()
+
+    monkeypatch.setattr(service.client.responses, "create", create)
+    request = TurningTestAIRequest(
+        action="rewrite", prompt_id="science", question="A question", answer="Selected text"
+    )
+
+    assert asyncio.run(service.run_ai_action(request)) == ("A concise replacement.", 3, "gpt-4o-mini")
 
 
 def test_pangram_defaults_to_current_text_api():

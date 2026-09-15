@@ -14,6 +14,7 @@ def test_count_words_ignores_repeated_whitespace():
 
 def test_pangram_defaults_to_current_text_api():
     assert settings.pangram_api_base_url == "https://text.external-api.pangram.com"
+    assert settings.pangram_model == "pangram-4"
 
 
 def test_submit_pangram_uses_current_endpoint_and_api_key_header(monkeypatch):
@@ -76,3 +77,16 @@ def test_success_response_is_preserved_including_zero_false_and_extra_fields(mon
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     assert asyncio.run(service.get_pangram_task("task-1")) == payload
+
+
+def test_provider_validation_error_includes_pangram_detail():
+    response = httpx.Response(
+        422,
+        json={"detail": "model must be pangram-4"},
+        request=httpx.Request("POST", "https://text.external-api.pangram.com/task"),
+    )
+
+    error = service._provider_error(response)
+
+    assert error.status_code == 502
+    assert str(error) == "Pangram rejected the request (HTTP 422). model must be pangram-4"

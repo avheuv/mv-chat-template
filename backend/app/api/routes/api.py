@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 @router.post("/api/turning-test/ai", response_model=TurningTestAIResponse)
 async def turning_test_ai(request: TurningTestAIRequest):
     try:
-        answer, word_count = await run_ai_action(request)
-        return TurningTestAIResponse(answer=answer, word_count=word_count, model=settings.turning_test_openai_model)
+        answer, word_count, model = await run_ai_action(request)
+        return TurningTestAIResponse(answer=answer, word_count=word_count, model=model)
     except TurningTestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception:
@@ -37,8 +37,8 @@ async def turning_test_ai(request: TurningTestAIRequest):
 @router.post("/api/turning-test/pangram", response_model=PangramTaskResponse)
 async def turning_test_pangram_submit(request: PangramSubmitRequest):
     try:
-        task_id, response = await submit_pangram(request.text)
-        return PangramTaskResponse(task_id=task_id, requested_model=settings.pangram_model, response=response)
+        task_id, response, model = await submit_pangram(request.text)
+        return PangramTaskResponse(task_id=task_id, requested_model=model, response=response)
     except TurningTestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
@@ -46,8 +46,8 @@ async def turning_test_pangram_submit(request: PangramSubmitRequest):
 @router.get("/api/turning-test/pangram/{task_id}", response_model=PangramTaskResponse)
 async def turning_test_pangram_status(task_id: str):
     try:
-        response = await get_pangram_task(task_id)
-        return PangramTaskResponse(task_id=task_id, requested_model=settings.pangram_model, response=response)
+        response, model = await get_pangram_task(task_id)
+        return PangramTaskResponse(task_id=task_id, requested_model=model, response=response)
     except TurningTestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
@@ -154,12 +154,17 @@ async def get_prototype(prototype_id: str):
 
     # Inject Firestore override before returning
     overrides = await firestore_service.get_prototype_overrides(
-        prototype_id, populated_prototype.systemPrompt, populated_prototype.model, populated_prototype.stagePrompts
+        prototype_id,
+        populated_prototype.systemPrompt,
+        populated_prototype.model,
+        populated_prototype.stagePrompts,
+        populated_prototype.config,
     )
 
     populated_prototype.systemPrompt = overrides["systemPrompt"]
     populated_prototype.model = overrides["model"]
     populated_prototype.stagePrompts = overrides.get("stagePrompts")
+    populated_prototype.config = overrides.get("config", {})
 
     return populated_prototype
 

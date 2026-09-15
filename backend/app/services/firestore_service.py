@@ -25,11 +25,12 @@ class FirestoreService:
             return data
         return None
 
-    async def get_prototype_overrides(self, prototype_id: str, default_prompt: str, default_model: str, default_stage_prompts: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    async def get_prototype_overrides(self, prototype_id: str, default_prompt: str, default_model: str, default_stage_prompts: Optional[Dict[str, str]] = None, default_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         overrides = {
             "systemPrompt": default_prompt,
             "model": default_model,
-            "stagePrompts": default_stage_prompts or {}
+            "stagePrompts": default_stage_prompts or {},
+            "config": dict(default_config or {}),
         }
 
         if not self.db: return overrides
@@ -60,6 +61,12 @@ class FirestoreService:
                     overrides["model"] = data.get("model")
                 if data.get("stagePrompts"):
                     overrides["stagePrompts"] = data.get("stagePrompts")
+                stored_config = data.get("config") if isinstance(data.get("config"), dict) else {}
+                overrides["config"].update(stored_config)
+                # Keep non-secret prototype configuration editable in Firestore,
+                # and backfill newly introduced YAML defaults on existing records.
+                if default_config and any(key not in stored_config for key in default_config):
+                    await doc_ref.set({"config": overrides["config"]}, merge=True)
             return overrides
 
         # If it doesn't exist, create it automatically with the defaults to guide the user
@@ -70,6 +77,8 @@ class FirestoreService:
         }
         if default_stage_prompts is not None:
             initial_data["stagePrompts"] = default_stage_prompts
+        if default_config:
+            initial_data["config"] = default_config
 
         await self.set_document("prompts", prototype_id, initial_data)
         return overrides

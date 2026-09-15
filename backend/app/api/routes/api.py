@@ -14,10 +14,42 @@ from app.services.firestore_service import firestore_service
 from app.core.config import settings
 from app.models.teachbot import RestoreRequest, SnapshotRequest, TeachBotStartRequest, TeachBotTurnRequest
 from app.services.teachbot_service import teachbot_service
+from app.models.turning_test import PangramSubmitRequest, PangramTaskResponse, TurningTestAIRequest, TurningTestAIResponse
+from app.services.turning_test_service import TurningTestError, count_words, get_pangram_task, run_ai_action, submit_pangram
 import httpx
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.post("/api/turning-test/ai", response_model=TurningTestAIResponse)
+async def turning_test_ai(request: TurningTestAIRequest):
+    try:
+        answer, word_count = await run_ai_action(request)
+        return TurningTestAIResponse(answer=answer, word_count=word_count, model=settings.turning_test_openai_model)
+    except TurningTestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Turning Test OpenAI request failed")
+        raise HTTPException(status_code=502, detail="OpenAI could not complete the action. Your draft was not changed.")
+
+
+@router.post("/api/turning-test/pangram", response_model=PangramTaskResponse)
+async def turning_test_pangram_submit(request: PangramSubmitRequest):
+    try:
+        task_id, response = await submit_pangram(request.text)
+        return PangramTaskResponse(task_id=task_id, requested_model=settings.pangram_model, response=response)
+    except TurningTestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/api/turning-test/pangram/{task_id}", response_model=PangramTaskResponse)
+async def turning_test_pangram_status(task_id: str):
+    try:
+        response = await get_pangram_task(task_id)
+        return PangramTaskResponse(task_id=task_id, requested_model=settings.pangram_model, response=response)
+    except TurningTestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 @router.post("/api/teachbot/start")
 async def start_teachbot(request: TeachBotStartRequest):

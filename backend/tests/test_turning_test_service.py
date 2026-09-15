@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.core.prototype_loader import prototype_loader
-from app.models.turning_test import TurningTestAIRequest
+from app.models.turning_test import TurningTestAIRequest, TurningTestRewriteRequest
 from app.services import turning_test_service as service
 
 
@@ -27,14 +27,14 @@ def test_count_words_ignores_repeated_whitespace():
     assert service.count_words(" \n\t ") == 0
 
 
-def test_generate_prompt_requests_approximately_300_words():
+def test_generate_prompt_requests_approximately_450_words():
     request = TurningTestAIRequest(
         prompt_id="science", question="Why is the sky blue?"
     )
 
     messages = service._input(request)
 
-    assert "approximately 300 words" in messages[0]["content"]
+    assert "approximately 450 words" in messages[0]["content"]
     assert "Why is the sky blue?" in messages[1]["content"]
 
 
@@ -45,7 +45,7 @@ def test_corrective_generate_prompt_uses_accepted_word_range():
 
     messages = service._input(request, corrective=True)
 
-    assert "100–500 words" in messages[0]["content"]
+    assert "400–500 words" in messages[0]["content"]
 
 
 def test_generation_request_rejects_removed_rewrite_fields():
@@ -59,7 +59,7 @@ def test_generation_request_rejects_removed_rewrite_fields():
         )
 
 
-@pytest.mark.parametrize("word_count", [100, 500])
+@pytest.mark.parametrize("word_count", [400, 500])
 def test_generate_accepts_word_count_boundaries(monkeypatch, word_count):
     monkeypatch.setattr(settings, "openai_api_key", "test-key")
 
@@ -77,6 +77,27 @@ def test_generate_accepts_word_count_boundaries(monkeypatch, word_count):
     _, returned_word_count, _ = asyncio.run(service.generate_starting_text(request))
 
     assert returned_word_count == word_count
+
+
+def test_rewrite_uses_action_prompt_and_selected_text(monkeypatch):
+    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+    captured = {}
+
+    class Response:
+        output_text = "Revised selection."
+
+    async def create(**kwargs):
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(service.client.responses, "create", create)
+    request = TurningTestRewriteRequest(action="light_polish", selected_text="Original selection.")
+
+    result = asyncio.run(service.rewrite_selected_text(request))
+
+    assert result == ("Revised selection.", "gpt-4o-mini")
+    assert service.REWRITE_INSTRUCTIONS["light_polish"] in captured["input"][0]["content"]
+    assert "Original selection." in captured["input"][1]["content"]
 
 
 def test_pangram_defaults_to_current_text_api():

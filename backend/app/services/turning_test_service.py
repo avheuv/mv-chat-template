@@ -4,7 +4,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.prototype_loader import prototype_loader
-from app.models.turning_test import TurningTestAIRequest
+from app.models.turning_test import TurningTestAIRequest, TurningTestRewriteRequest
 from app.services.firestore_service import firestore_service
 from app.services.llm_service import client
 
@@ -20,9 +20,15 @@ class TurningTestError(Exception):
 
 
 GENERATION_INSTRUCTION = (
-    "Write a clear, accurate answer to the academic question in approximately 300 words. Use ordinary "
+    "Write a clear, accurate answer to the academic question in approximately 450 words. Use ordinary "
     "language suitable for a general audience. Include useful examples or explanation where appropriate."
 )
+
+REWRITE_INSTRUCTIONS = {
+    "light_polish": "Make only small improvements to the selected text. Fix grammar, awkward phrasing, and minor word-choice issues while preserving the original sentence structure, tone, meaning, and as much of the original wording as possible.",
+    "improve_clarity": "Revise the selected text to make it clearer, smoother, and easier to read. You may change wording and sentence structure, but preserve the original meaning, tone, and level of detail. Make moderate changes rather than completely rewriting the passage.",
+    "major_rewrite": "Substantially rewrite the selected text to improve clarity, flow, and overall quality. Preserve the core meaning and important details, but feel free to significantly change wording, sentence structure, organization, and style.",
+}
 
 
 async def get_turning_test_config() -> Dict[str, Any]:
@@ -44,7 +50,7 @@ async def get_turning_test_config() -> Dict[str, Any]:
 def _input(request: TurningTestAIRequest, corrective: bool = False) -> list[dict[str, str]]:
     instruction = GENERATION_INSTRUCTION
     if corrective:
-        instruction += " Your previous result was outside the required range. Revise it once to contain 100–500 words."
+        instruction += " Your previous result was outside the required range. Revise it once to contain 400–500 words."
     return [
         {"role": "system", "content": instruction + " Return only the requested text, with no preamble, quotes, commentary, or Markdown."},
         {"role": "user", "content": f"<question>\n{request.question}\n</question>"},
@@ -60,15 +66,34 @@ async def generate_starting_text(request: TurningTestAIRequest) -> tuple[str, in
         response = await client.responses.create(
             model=model,
             input=_input(request, corrective=attempt == 1),
-            max_output_tokens=800,
+            max_output_tokens=1000,
         )
         output = response.output_text.strip()
         if not output:
             raise TurningTestError("OpenAI returned an empty answer. No starting text was created.")
         words = count_words(output)
-        if 100 <= words <= 500:
+        if 400 <= words <= 500:
             return output, words, model
-    raise TurningTestError("OpenAI could not produce a 100–500-word answer after one correction.", 422)
+    raise TurningTestError("OpenAI could not produce a 400–500-word answer after one correction.", 422)
+
+
+async def rewrite_selected_text(request: TurningTestRewriteRequest) -> tuple[str, str]:
+    if not settings.openai_api_key:
+        raise TurningTestError("OpenAI is not configured. Set OPENAI_API_KEY on the server.", 503)
+    config = await get_turning_test_config()
+    model = str(config["openaiModel"])
+    response = await client.responses.create(
+        model=model,
+        input=[
+            {"role": "system", "content": REWRITE_INSTRUCTIONS[request.action] + " Return only the revised text, with no preamble, quotes, commentary, or Markdown."},
+            {"role": "user", "content": f"<selected_text>\n{request.selected_text}\n</selected_text>"},
+        ],
+        max_output_tokens=1200,
+    )
+    output = response.output_text.strip()
+    if not output:
+        raise TurningTestError("OpenAI returned an empty revision. The selected text was not changed.")
+    return output, model
 
 
 def _pangram_headers() -> dict[str, str]:

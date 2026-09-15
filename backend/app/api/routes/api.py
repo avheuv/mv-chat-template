@@ -14,8 +14,8 @@ from app.services.firestore_service import firestore_service
 from app.core.config import settings
 from app.models.teachbot import RestoreRequest, SnapshotRequest, TeachBotStartRequest, TeachBotTurnRequest
 from app.services.teachbot_service import teachbot_service
-from app.models.turning_test import PangramSubmitRequest, PangramTaskResponse, TurningTestAIRequest, TurningTestAIResponse
-from app.services.turning_test_service import TurningTestError, count_words, generate_starting_text, get_pangram_task, submit_pangram
+from app.models.turning_test import PangramSubmitRequest, PangramTaskResponse, TurningTestAIRequest, TurningTestAIResponse, TurningTestRewriteRequest, TurningTestRewriteResponse
+from app.services.turning_test_service import TurningTestError, count_words, generate_starting_text, get_pangram_task, rewrite_selected_text, submit_pangram
 import httpx
 
 router = APIRouter()
@@ -32,6 +32,18 @@ async def turning_test_ai(request: TurningTestAIRequest):
     except Exception:
         logger.exception("Turning Test OpenAI request failed")
         raise HTTPException(status_code=502, detail="OpenAI could not generate the starting text.")
+
+
+@router.post("/api/turning-test/rewrite", response_model=TurningTestRewriteResponse)
+async def turning_test_rewrite(request: TurningTestRewriteRequest):
+    try:
+        rewritten_text, model = await rewrite_selected_text(request)
+        return TurningTestRewriteResponse(rewritten_text=rewritten_text, model=model)
+    except TurningTestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Turning Test OpenAI rewrite failed")
+        raise HTTPException(status_code=502, detail="OpenAI could not revise the selected text.")
 
 
 @router.post("/api/turning-test/pangram", response_model=PangramTaskResponse)

@@ -3,22 +3,22 @@ import { useMemo, useRef, useState } from 'react';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 const EVALUATION_MIN_WORDS = 50;
 
-const TURNING_TEST_PROMPTS = [
-  { id: 'astronomy-seasons', subject: 'Astronomy', question: "How does Earth's tilt cause the seasons?" },
-  { id: 'biology-photosynthesis', subject: 'Biology', question: 'How do plants use sunlight to grow?' },
-  { id: 'ecology-bees', subject: 'Ecology', question: 'Why are bees important to an ecosystem?' },
-  { id: 'physics-rolling-ball', subject: 'Physics', question: 'Why does a rolling ball eventually stop?' },
-  { id: 'chemistry-changes', subject: 'Chemistry', question: 'How is melting ice different from burning wood?' },
-  { id: 'earth-science-water-cycle', subject: 'Earth science', question: 'How does the water cycle move water around Earth?' },
-  { id: 'geography-mountains-rainfall', subject: 'Geography', question: 'How can mountains affect rainfall?' },
-  { id: 'mathematics-fractions', subject: 'Mathematics', question: 'What does a fraction represent, and when might you use one?' },
-  { id: 'statistics-averages', subject: 'Statistics', question: 'How can an average give a misleading impression of a group?' },
-  { id: 'history-river-civilizations', subject: 'History', question: 'Why did early civilizations often develop near rivers?' },
-  { id: 'civics-branches', subject: 'Civics', question: 'Why do governments divide power among different branches?' },
-  { id: 'economics-supply-demand', subject: 'Economics', question: 'How do supply and demand affect prices?' },
-  { id: 'literature-theme-plot', subject: 'Literature', question: "How is a story's theme different from its plot?" },
-  { id: 'media-literacy-sources', subject: 'Media literacy', question: 'How can you judge whether an online source is trustworthy?' },
-  { id: 'computer-science-algorithms', subject: 'Computer science', question: 'What is an algorithm? Give an everyday example.' },
+const TURNING_TEST_PROMPT = { id: 'astronomy-seasons', question: "How does Earth's tilt cause the season's?" } as const;
+
+const HUMAN_GENERATED_PASSAGE = `Many people have believed that the seasons were the result of the changing distance between Earth and the Sun. This sounds reasonable at first: it should be colder when Earth is farther from the Sun. But the facts don’t bear out this hypothesis. Although Earth’s orbit around the Sun is an ellipse, its distance from the Sun varies by only about 3%. That’s not enough to cause significant variations in the Sun’s heating. To make matters worse for people in North America who hold this hypothesis, Earth is actually closest to the Sun in January, when the Northern Hemisphere is in the middle of winter. And if distance were the governing factor, why would the two hemispheres have opposite seasons? As we shall show, the seasons are actually caused by the 23.5° tilt of the Earth's axis.
+
+As Earth travels around the Sun, in June the Northern Hemisphere “leans into” the Sun and is more directly illuminated. In December, the situation is reversed: the Southern Hemisphere leans into the Sun, and the Northern Hemisphere leans away. In September and March, Earth leans “sideways”—neither into the Sun nor away from it—so the two hemispheres are equally favored with sunshine.
+
+How does the Sun’s favoring one hemisphere translate into making it warmer for us down on the surface of Earth? There are two effects we need to consider. When we lean into the Sun, sunlight hits us at a more direct angle and is more effective at heating Earth’s surface. You can get a similar effect by shining a flashlight onto a wall. If you shine the flashlight straight on, you get an intense spot of light on the wall. But if you hold the flashlight at an angle (if the wall “leans out” of the beam), then the spot of light is more spread out. Like the straight-on light, the sunlight in June is more direct and intense in the Northern Hemisphere, and hence more effective at heating.
+
+The second effect has to do with the length of time the Sun spends above the horizon. Even if you’ve never thought about astronomy before, we’re sure you have observed that the hours of daylight increase in summer and decrease in winter.
+
+In June, the Sun is more north in the sky and spends more time with those who live in the Northern Hemisphere. It rises high in the sky and is above the horizon in the United States for as long as 15 hours. Thus, the Sun not only heats us with more direct rays, but it also has more time to do it each day. In December, when the Sun is farther south in the sky, the situation is reversed.`;
+
+const REWRITE_ACTIONS = [
+  { id: 'light_polish', label: 'Light Polish' },
+  { id: 'improve_clarity', label: 'Improve Clarity' },
+  { id: 'major_rewrite', label: 'Major Rewrite' },
 ] as const;
 
 const countWords = (text: string) => text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -76,24 +76,34 @@ async function jsonRequest(url: string, init?: RequestInit) {
 }
 
 export default function TurningTest() {
-  const [promptId, setPromptId] = useState(''); const [answer, setAnswer] = useState('');
-  const promptRequest = useRef(0);
+  const [answer, setAnswer] = useState('');
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [running, setRunning] = useState<string | null>(null); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [history, setHistory] = useState<EvalRun[]>([]); const [actions, setActions] = useState<string[]>([]); const manualLogged = useRef(false);
-  const selected = TURNING_TEST_PROMPTS.find(prompt => prompt.id === promptId); const wordCount = countWords(answer); const latest = history.at(-1);
-  const stale = Boolean(latest && (latest.text !== answer || latest.promptId !== promptId));
+  const wordCount = countWords(answer); const latest = history.at(-1);
+  const stale = Boolean(latest && latest.text !== answer);
   const log = (action: string) => setActions(current => [...current, action]);
   const edit = (value: string) => { setAnswer(value); if (!manualLogged.current) { log('Manual edit'); manualLogged.current = true; } };
-  const changePrompt = async (value: string) => {
-    const requestId = ++promptRequest.current; setPromptId(value); setAnswer(''); setError(''); setNotice(''); setHistory([]); setActions([]); manualLogged.current = false;
-    const nextPrompt = TURNING_TEST_PROMPTS.find(prompt => prompt.id === value); if (!nextPrompt) return;
-    setRunning('generate'); setNotice('Generating your 300-word starting text…');
-    try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: nextPrompt.id, question: nextPrompt.question }) }); if (requestId !== promptRequest.current) return; const next = String(data.answer ?? ''); if (!next.trim()) throw new Error('The AI returned an empty answer.'); setAnswer(next); setNotice('Starting text: AI-generated. Edit it manually, then evaluate your changes.'); setActions(['AI-generated starting text']); }
-    catch (reason) { if (requestId === promptRequest.current) { setError(reason instanceof Error ? reason.message : 'Starting text could not be generated.'); setNotice(''); } }
-    finally { if (requestId === promptRequest.current) setRunning(null); }
+  const replacePassage = (value: string, source: string) => {
+    setAnswer(value); setSelection({ start: 0, end: 0 }); setError(''); setNotice(`Passage loaded: ${source}.`); setHistory([]); setActions([`${source} passage`]); manualLogged.current = false;
+  };
+  const generate = async () => {
+    setRunning('generate'); setError(''); setNotice('Generating an approximately 450-word passage…');
+    try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: TURNING_TEST_PROMPT.id, question: TURNING_TEST_PROMPT.question }) }); const next = String(data.answer ?? ''); if (!next.trim()) throw new Error('The AI returned an empty answer.'); replacePassage(next, 'AI-generated'); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'The passage could not be generated.'); setNotice(''); }
+    finally { setRunning(null); }
+  };
+  const rewrite = async (action: typeof REWRITE_ACTIONS[number]) => {
+    const { start, end } = selection; const selectedText = answer.slice(start, end);
+    if (running || !selectedText) return;
+    setRunning(action.id); setError(''); setNotice(`${action.label} is revising the highlighted text…`);
+    try { const data = await jsonRequest(`${API_BASE}/turning-test/rewrite`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action.id, selected_text: selectedText }) }); const replacement = String(data.rewritten_text ?? ''); if (!replacement.trim()) throw new Error('The AI returned an empty revision.'); setAnswer(current => current.slice(0, start) + replacement + current.slice(end)); const nextEnd = start + replacement.length; setSelection({ start, end: nextEnd }); setNotice(`${action.label} applied to the highlighted text.`); log(action.label); window.setTimeout(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(start, nextEnd); }, 0); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'The selected text could not be revised.'); setNotice(''); }
+    finally { setRunning(null); }
   };
   const evaluate = async () => {
-    if (running || !selected || wordCount < EVALUATION_MIN_WORDS) return; setRunning('evaluation'); setError(''); const snapshot = { promptId: selected.id, question: selected.question, text: answer, wordCount, actions: [...actions] };
+    if (running || wordCount < EVALUATION_MIN_WORDS) return; setRunning('evaluation'); setError(''); const snapshot = { promptId: TURNING_TEST_PROMPT.id, question: TURNING_TEST_PROMPT.question, text: answer, wordCount, actions: [...actions] };
     try { const submitted = await jsonRequest(`${API_BASE}/turning-test/pangram`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: snapshot.text }) }); const taskId = String(submitted.task_id); const requestedModel = String(submitted.requested_model); let response = submitted.response as Json; let stage = stageOf(response);
       for (let attempt = 0; !['STAGE_SUCCESS', 'STAGE_FAILED'].includes(stage) && attempt < 30; attempt++) { await new Promise(resolve => window.setTimeout(resolve, 2000)); const status = await jsonRequest(`${API_BASE}/turning-test/pangram/${encodeURIComponent(taskId)}`); response = status.response as Json; stage = stageOf(response); }
       if (stage === 'STAGE_FAILED') throw new Error('Pangram reported a failed task. No result was recorded.'); if (stage !== 'STAGE_SUCCESS') throw new Error('Pangram did not finish within one minute. Try again; no result was recorded.');
@@ -103,12 +113,20 @@ export default function TurningTest() {
   const deltas = useMemo(() => (run: EvalRun, index: number) => { const previous = history[index - 1]; if (!previous || previous.promptId !== run.promptId || previous.requestedModel !== run.requestedModel || previous.result.version !== run.result.version) return null; return ['fraction_ai', 'fraction_ai_assisted', 'fraction_human'].map(key => { const a = fraction(run.result, key), b = fraction(previous.result, key); return a === undefined || b === undefined ? 'n/a' : `${((a - b) * 100) >= 0 ? '+' : ''}${((a - b) * 100).toFixed(1)} pp`; }).join(' · '); }, [history]);
   return <div className="tt-shell"><main className="tt-main">
     <header className="tt-intro"><h1>Turning Test</h1><p>Can you make AI-written text pass as human?</p></header>
-    <section className="tt-card tt-compose"><label htmlFor="tt-prompt"><strong>Select a prompt</strong></label><select id="tt-prompt" value={promptId} onChange={event => changePrompt(event.target.value)} disabled={Boolean(running)}><option value="">Choose a prompt</option>{TURNING_TEST_PROMPTS.map(prompt => <option key={prompt.id} value={prompt.id}>{prompt.subject}: {prompt.question}</option>)}</select>{notice && <p className="tt-notice" role="status">{notice}</p>}
-      <label htmlFor="tt-answer"><strong>Your answer</strong></label><textarea id="tt-answer" value={answer} onChange={event => edit(event.target.value)} disabled={Boolean(running)} placeholder={selected ? 'Your AI-generated starting text will appear here…' : 'Choose a prompt to generate starting text…'} />
-      <p className="tt-count">{wordCount} words</p>
-      <button type="button" className="tt-evaluate" onClick={evaluate} disabled={Boolean(running) || !selected || wordCount < EVALUATION_MIN_WORDS}>{running === 'evaluation' ? 'Pangram is evaluating…' : 'Run Pangram Eval'}</button>{wordCount < EVALUATION_MIN_WORDS && <p className="tt-guidance">Add {EVALUATION_MIN_WORDS - wordCount} more {EVALUATION_MIN_WORDS - wordCount === 1 ? 'word' : 'words'} to enable evaluation. Text is never padded automatically.</p>}{error && <p className="tt-error" role="alert">{error}</p>}
+    <section className="tt-card tt-compose">
+      <div className="tt-prompt"><span>Prompt</span><strong>{TURNING_TEST_PROMPT.question}</strong></div>
+      <div className="tt-source-actions" aria-label="Choose passage source">
+        <button type="button" onClick={generate} disabled={Boolean(running)}>{running === 'generate' ? 'Generating…' : 'AI-Generated'}</button>
+        <button type="button" onClick={() => replacePassage(HUMAN_GENERATED_PASSAGE, 'Human-generated')} disabled={Boolean(running)}>Human-Generated</button>
+      </div>
+      {notice && <p className="tt-notice" role="status">{notice}</p>}
+      <label htmlFor="tt-answer"><strong>Your answer</strong></label>
+      <textarea ref={textareaRef} id="tt-answer" value={answer} onChange={event => edit(event.target.value)} onSelect={event => setSelection({ start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd })} disabled={Boolean(running)} placeholder="Choose a passage source, then edit it here…" />
+      <div className="tt-editor-footer"><p className="tt-count">{wordCount} words</p><p className="tt-selection-guidance">{selection.start === selection.end ? 'Highlight text to enable AI editing.' : `${countWords(answer.slice(selection.start, selection.end))} words selected`}</p></div>
+      <div className="tt-rewrite-actions" aria-label="AI editing tools">{REWRITE_ACTIONS.map(action => <button key={action.id} type="button" onMouseDown={event => event.preventDefault()} onClick={() => rewrite(action)} disabled={Boolean(running) || selection.start === selection.end}>{running === action.id ? 'Revising…' : action.label}</button>)}</div>
+      <button type="button" className="tt-evaluate" onClick={evaluate} disabled={Boolean(running) || wordCount < EVALUATION_MIN_WORDS}>{running === 'evaluation' ? 'Pangram is evaluating…' : 'Run Pangram Eval'}</button>{wordCount < EVALUATION_MIN_WORDS && <p className="tt-guidance">Add {EVALUATION_MIN_WORDS - wordCount} more {EVALUATION_MIN_WORDS - wordCount === 1 ? 'word' : 'words'} to enable evaluation. Text is never padded automatically.</p>}{error && <p className="tt-error" role="alert">{error}</p>}
     </section>
-    {latest ? <Report run={latest} stale={stale} /> : <section className="tt-report tt-empty"><p className="tt-eyebrow">Pangram Report</p><h2>No evaluation yet</h2><p>Choose a prompt, write at least {EVALUATION_MIN_WORDS} words, then run the evaluation.</p></section>}
+    {latest ? <Report run={latest} stale={stale} /> : <section className="tt-report tt-empty"><p className="tt-eyebrow">Pangram Report</p><h2>No evaluation yet</h2><p>Choose a passage, write at least {EVALUATION_MIN_WORDS} words, then run the evaluation.</p></section>}
     <section className="tt-history"><h2>Evaluation history</h2><p>This session log records interactions in this app, not verified authorship of pasted or typed text.</p>{history.length ? [...history].reverse().map((run, reverseIndex) => { const index = history.length - 1 - reverseIndex; const delta = deltas(run, index); return <details key={run.run}><summary><span><strong>Run {run.run}</strong> · {new Date(run.timestamp).toLocaleTimeString()} · {run.actions.join(' → ') || 'No actions logged'}</span><span>{display(run.result.prediction_short)} · {percent(fraction(run.result, 'fraction_ai'))} / {percent(fraction(run.result, 'fraction_ai_assisted'))} / {percent(fraction(run.result, 'fraction_human'))}</span>{delta && <small>Change (AI / assisted / human): {delta}</small>}</summary><Report run={run} stale={false} /></details>; }) : <p>No successful evaluations in this session.</p>}</section>
   </main></div>;
 }

@@ -1195,10 +1195,13 @@ body {
 .tt-count, .tt-guidance { margin: -2px 0 8px; color: #526273; font-size: 13px; text-align: right; }
 .tt-count.short { color: #9b4d2d; }
 .tt-notice { margin: 0; padding: 9px 12px; border-radius: 8px; background: #fff6dc; color: #75531b; font-size: 13px; }
+.tt-instructions { margin: 8px 0; padding: 12px 14px; border-left: 4px solid #246a9d; background: #eef6fb; color: #294a65; line-height: 1.5; }
 .tt-tools-heading { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
 .tt-tools-heading h2 { margin: 0; font-size: 21px; }
 .tt-link { border: 0; background: transparent; color: #246a9d; text-decoration: underline; cursor: pointer; }
-.tt-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tt-tool-help { margin: 0 0 4px; color: #596675; font-size: 14px; line-height: 1.5; }
+.tt-compose textarea.tt-rewrite-prompt { min-height: 92px; }
+.tt-tools { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .tt-tools button { min-height: 44px; border: 1px solid #9cb0c1; border-radius: 9px; background: #f7fafc; color: #234f78; font-weight: 750; cursor: pointer; }
 .tt-evaluate { margin-top: 14px; min-height: 56px; border: 0; border-radius: 10px; background: #db5c35; color: white; font-size: 17px; font-weight: 800; cursor: pointer; }
 .tt-guidance { margin: 0; text-align: left; }

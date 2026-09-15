@@ -77,8 +77,15 @@ class ChatService:
 
         session.messages.append(system_message)
 
-        # If an initialMessagePrompt exists, let's trigger the LLM to write the first greeting.
-        if prototype.initialMessagePrompt:
+        # Seed exact, authored opening messages without an unnecessary model call.
+        if prototype.initialMessage:
+            session.messages.append(Message(
+                id=str(uuid.uuid4()),
+                role="assistant",
+                content=prototype.initialMessage,
+            ))
+        # Alternatively, let the LLM generate a dynamic first greeting.
+        elif prototype.initialMessagePrompt:
             if prototype.ui.mode == "twenty_questions":
                 content, reasoning_summary, response_id = await llm_service.generate_twenty_questions_turn(
                     model=model_to_use,

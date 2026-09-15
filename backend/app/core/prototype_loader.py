@@ -33,6 +33,7 @@ class PrototypeConfig(BaseModel):
     description: Optional[str] = ""
     systemPrompt: str
     stagePrompts: Optional[Dict[str, str]] = None
+    initialMessage: Optional[str] = None
     initialMessagePrompt: Optional[str] = None
     model: str = "gpt-4o"
     temperature: float = 0.7

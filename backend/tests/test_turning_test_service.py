@@ -79,7 +79,24 @@ def test_generate_accepts_word_count_boundaries(monkeypatch, word_count):
     assert returned_word_count == word_count
 
 
-def test_rewrite_uses_action_prompt_and_selected_text(monkeypatch):
+@pytest.mark.parametrize(
+    ("action", "instruction"),
+    [
+        (
+            "light_polish",
+            "Make only small improvements to the selected text. Fix grammar, awkward phrasing, and minor word-choice issues while preserving the original sentence structure, tone, meaning, and as much of the original wording as possible.",
+        ),
+        (
+            "improve_clarity",
+            "Revise the selected text to make it clearer, smoother, and easier to read. You may change wording and sentence structure, but preserve the original meaning, tone, and level of detail. Make moderate changes rather than completely rewriting the passage.",
+        ),
+        (
+            "major_rewrite",
+            "Substantially rewrite the selected text to improve clarity, flow, and overall quality. Preserve the core meaning and important details, but feel free to significantly change wording, sentence structure, organization, and style.",
+        ),
+    ],
+)
+def test_rewrite_uses_exact_action_prompt_and_selected_text(monkeypatch, action, instruction):
     monkeypatch.setattr(settings, "openai_api_key", "test-key")
     captured = {}
 
@@ -91,13 +108,19 @@ def test_rewrite_uses_action_prompt_and_selected_text(monkeypatch):
         return Response()
 
     monkeypatch.setattr(service.client.responses, "create", create)
-    request = TurningTestRewriteRequest(action="light_polish", selected_text="Original selection.")
+    request = TurningTestRewriteRequest(action=action, selected_text="Original selection.")
 
     result = asyncio.run(service.rewrite_selected_text(request))
 
     assert result == ("Revised selection.", "gpt-4o-mini")
-    assert service.REWRITE_INSTRUCTIONS["light_polish"] in captured["input"][0]["content"]
-    assert "Original selection." in captured["input"][1]["content"]
+    assert service.REWRITE_INSTRUCTIONS[action] == instruction
+    assert captured["input"][0]["content"] == (
+        instruction
+        + " Return only the revised text, with no preamble, quotes, commentary, or Markdown."
+    )
+    assert captured["input"][1]["content"] == (
+        "<selected_text>\nOriginal selection.\n</selected_text>"
+    )
 
 
 def test_pangram_defaults_to_current_text_api():

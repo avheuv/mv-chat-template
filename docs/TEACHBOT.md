@@ -9,6 +9,8 @@ TEACHBOT (“Learning by Teaching an AI Learner”) is a separate prototype in t
 3. From `frontend`, run `npm install && npm run dev`, open the launcher, and select **TEACHBOT**.
 4. Select a topic populated through the existing Firestore `lesson_topics` dynamic-options collection and choose a learner profile.
 
+The **Lovable overconfident bumbler** profile starts with no subject knowledge, avoids follow-up questions, and responds to teaching with a concise, confidently incorrect chain of reasoning. Its warm, specific misconceptions are designed to keep the teacher correcting and refining explanations rather than simply answering learner questions.
+
 On first prototype access, the existing override mechanism initializes `prompts/teachbot` with `systemPrompt` and `model` from `backend/prototypes/teachbot.yaml`. Edit that Firestore document to override either value without redeploying. The actual resolved model and settings are frozen into each run's export. Models must be supported by the existing OpenAI chat-completions integration and JSON output mode.
 
 ## Add a lesson configuration

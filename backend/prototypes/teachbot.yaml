@@ -41,3 +41,5 @@ ui:
           value: confident_novice
         - label: Uncertain learner
           value: uncertain
+        - label: Lovable overconfident bumbler
+          value: lovable_bumbler

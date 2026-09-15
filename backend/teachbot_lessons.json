@@ -8,7 +8,8 @@
       ],
       "uncertain": [
         {"id": "q-degree", "statement": "A quadratic probably has something to do with an x squared term.", "confidence": 0.35, "sources": ["lesson_config:quadratics"]}
-      ]
+      ],
+      "lovable_bumbler": []
     },
     "evaluation": {
       "criteria": ["A quadratic has degree two", "The leading coefficient determines whether its parabola opens upward or downward", "Roots are x-values where the function equals zero"],
@@ -24,12 +25,13 @@
       ],
       "uncertain": [
         {"id": "b-parts", "statement": "Cells seem to contain smaller parts with different jobs.", "confidence": 0.3, "sources": ["lesson_config:biology"]}
-      ]
+      ],
+      "lovable_bumbler": []
     },
     "evaluation": {
       "criteria": ["Organelles perform specialized cellular functions", "Mitochondria transform chemical energy into ATP", "Cell membranes regulate movement into and out of cells"],
       "misconceptions": {"energy_from_nothing": "Mitochondria create energy from nothing", "all_cells_same": "All cells contain exactly the same structures"}
     }
   },
-  "default": {"title": "General Math", "profiles": {"blank_slate": [], "confident_novice": [], "uncertain": []}, "evaluation": {"criteria": [], "misconceptions": {}}}
+  "default": {"title": "General Math", "profiles": {"blank_slate": [], "confident_novice": [], "uncertain": [], "lovable_bumbler": []}, "evaluation": {"criteria": [], "misconceptions": {}}}
 }

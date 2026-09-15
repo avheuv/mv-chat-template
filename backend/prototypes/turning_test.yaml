@@ -1,0 +1,13 @@
+id: turning_test
+name: Turning Test
+displayOrder: 7
+description: Compare writing processes with Pangram's AI-authorship detector.
+systemPrompt: Turning Test uses dedicated action prompts in the backend service.
+model: gpt-4o-mini
+temperature: 0.2
+maxTokens: 500
+ui:
+  title: Turning Test
+  subtitle: Explore how writing and AI-assisted editing affect a detector's output.
+  mode: turning_test
+  inputs: []

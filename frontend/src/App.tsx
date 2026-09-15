@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import TeachBot from './TeachBot';
+import TurningTest from './TurningTest';
 
 // Use environment variable for production, fallback to local dev server
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -25,7 +26,7 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
-    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment' | 'twenty_questions' | 'teachbot';
+    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment' | 'twenty_questions' | 'teachbot' | 'turning_test';
     glassbox?: boolean;
     inlineReasoning?: boolean;
     inputs: UIInputConfig[];
@@ -1492,6 +1493,7 @@ ${getSketchCoachingFocus()}`
   }
 
   if (view === 'splash' && activePrototypeUI) {
+    if (activePrototypeUI.mode === 'turning_test') return <TurningTest onExit={() => setView('landing')} />;
     if (activePrototypeUI.mode === 'teachbot') return <TeachBot topics={activePrototypeUI.inputs.find(input => input.id === 'lesson_code')?.options || []} onExit={() => setView('landing')} />;
     if (activePrototypeUI.mode === 'twenty_questions') return (
       <div className="act-app-shell glassbox-shell">

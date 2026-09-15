@@ -1493,7 +1493,7 @@ ${getSketchCoachingFocus()}`
   }
 
   if (view === 'splash' && activePrototypeUI) {
-    if (activePrototypeUI.mode === 'turning_test') return <TurningTest onExit={() => setView('landing')} />;
+    if (activePrototypeUI.mode === 'turning_test') return <TurningTest />;
     if (activePrototypeUI.mode === 'teachbot') return <TeachBot topics={activePrototypeUI.inputs.find(input => input.id === 'lesson_code')?.options || []} onExit={() => setView('landing')} />;
     if (activePrototypeUI.mode === 'twenty_questions') return (
       <div className="act-app-shell glassbox-shell">

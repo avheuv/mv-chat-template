@@ -75,7 +75,14 @@ def _provider_error(response: httpx.Response) -> TurningTestError:
         return TurningTestError("Pangram rate limit reached. Wait briefly and try again.", 429)
     if response.status_code == 404:
         return TurningTestError("The configured Pangram model or task was not found.", 404)
-    return TurningTestError(f"Pangram rejected the request (HTTP {response.status_code}).", 502)
+    detail = ""
+    try:
+        payload = response.json()
+        detail = str(payload.get("detail") or payload.get("message") or payload.get("error") or "").strip()
+    except (ValueError, AttributeError):
+        pass
+    suffix = f" {detail}" if detail else ""
+    return TurningTestError(f"Pangram rejected the request (HTTP {response.status_code}).{suffix}", 502)
 
 
 async def submit_pangram(text: str) -> tuple[str, Dict[str, Any]]:

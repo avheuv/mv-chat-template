@@ -77,7 +77,7 @@ async function jsonRequest(url: string, init?: RequestInit) {
   return body;
 }
 
-export default function TurningTest({ onExit }: { onExit: () => void }) {
+export default function TurningTest() {
   const [promptId, setPromptId] = useState(''); const [answer, setAnswer] = useState(''); const [undo, setUndo] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [history, setHistory] = useState<EvalRun[]>([]); const [actions, setActions] = useState<string[]>([]); const manualLogged = useRef(false);
@@ -101,8 +101,8 @@ export default function TurningTest({ onExit }: { onExit: () => void }) {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Pangram evaluation failed.'); } finally { setRunning(null); }
   };
   const deltas = useMemo(() => (run: EvalRun, index: number) => { const previous = history[index - 1]; if (!previous || previous.promptId !== run.promptId || previous.requestedModel !== run.requestedModel || previous.result.version !== run.result.version) return null; return ['fraction_ai', 'fraction_ai_assisted', 'fraction_human'].map(key => { const a = fraction(run.result, key), b = fraction(previous.result, key); return a === undefined || b === undefined ? 'n/a' : `${((a - b) * 100) >= 0 ? '+' : ''}${((a - b) * 100).toFixed(1)} pp`; }).join(' · '); }, [history]);
-  return <div className="tt-shell"><header className="tt-topbar"><button type="button" onClick={onExit}>← Prototypes</button><span>Michigan Virtual · Learning prototype</span></header><main className="tt-main">
-    <header className="tt-intro"><h1 aria-label="Turning Test">Tur<sup>n</sup>ing Test</h1><p>Explore how writing by yourself or with AI tools affects what Pangram’s detector infers.</p></header>
+  return <div className="tt-shell"><main className="tt-main">
+    <header className="tt-intro"><h1>Turning Test</h1><p>Explore how writing by yourself or with AI tools affects what Pangram’s detector infers.</p></header>
     <section className="tt-card tt-compose"><label htmlFor="tt-prompt"><strong>Select a prompt</strong></label><select id="tt-prompt" value={promptId} onChange={event => changePrompt(event.target.value)} disabled={Boolean(running)}><option value="">Choose a prompt</option>{TURNING_TEST_PROMPTS.map(prompt => <option key={prompt.id} value={prompt.id}>{prompt.subject}: {prompt.question}</option>)}</select>{notice && <p className="tt-notice" role="status">{notice}</p>}
       <label htmlFor="tt-answer"><strong>Your answer</strong></label><textarea id="tt-answer" value={answer} onChange={event => edit(event.target.value)} onPaste={() => { if (!manualLogged.current) { log('Pasted text'); manualLogged.current = true; } }} disabled={Boolean(running)} placeholder="Write your answer here…" />
       <p className={`tt-count ${wordCount < EVALUATION_MIN_WORDS ? 'short' : ''}`}>{wordCount} words · Target: 60–100 · Pangram minimum: {EVALUATION_MIN_WORDS}</p>

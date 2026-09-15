@@ -1181,12 +1181,9 @@ body {
 
 /* Turning Test */
 .tt-shell { min-height: 100vh; background: #f4f6f8; color: #17202a; }
-.tt-topbar { display: flex; justify-content: space-between; align-items: center; padding: 15px max(20px, calc((100vw - 820px) / 2)); border-bottom: 1px solid #dce2e8; background: rgba(255,255,255,.95); color: #596675; font-size: 13px; }
-.tt-topbar button { border: 0; background: transparent; color: #234f78; font: inherit; font-weight: 700; cursor: pointer; }
 .tt-main { width: min(100% - 32px, 820px); margin: auto; padding: 48px 0 70px; }
 .tt-intro { margin-bottom: 28px; }
-.tt-intro h1 { margin: 0; color: #173e62; font-size: clamp(42px, 8vw, 66px); line-height: 1; letter-spacing: -.045em; }
-.tt-intro sup { position: relative; top: -.2em; color: #db5c35; font-size: .42em; }
+.tt-intro h1 { margin: 0; color: #173e62; font-size: clamp(30px, 5.6vw, 46px); line-height: 1; letter-spacing: -.045em; }
 .tt-intro p { max-width: 650px; margin: 14px 0 0; color: #596675; font-size: 17px; line-height: 1.55; }
 .tt-card, .tt-report, .tt-history { margin-top: 20px; padding: 28px; border: 1px solid #dce2e8; border-radius: 18px; background: #fff; box-shadow: 0 8px 26px rgba(28,53,75,.05); }
 .tt-compose { display: grid; gap: 10px; }

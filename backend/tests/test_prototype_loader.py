@@ -48,3 +48,16 @@ def test_twenty_questions_uses_current_reasoning_summary_field():
         "summary": "auto",
         "context": "all_turns",
     }
+
+
+def test_pip_has_exact_opening_message_and_chat_configuration():
+    prototype = PrototypeLoader().get_prototype("pip")
+
+    assert prototype is not None
+    assert prototype.initialMessage == (
+        "“What makes something alive? Give me a definition, and I’ll see what qualifies.”"
+    )
+    assert prototype.model == "gpt-5.6"
+    assert prototype.maxTokens == 160
+    assert prototype.ui.mode == "chat"
+    assert prototype.ui.inputs == []

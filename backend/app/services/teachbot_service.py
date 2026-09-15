@@ -18,7 +18,23 @@ def _now() -> str:
 class TeachBotService:
     """Owns authoritative learner state; the model may only propose mutations."""
 
-    prompt_version = "teachbot-learner-v1"
+    prompt_version = "teachbot-learner-v2"
+    profiles = {
+        "blank_slate": {"tone": "curious and candid", "instructions": "Begin without subject beliefs and ask natural questions when clarification is needed."},
+        "confident_novice": {"tone": "confident but open to correction", "instructions": "Express configured starting misconceptions confidently while remaining open to correction."},
+        "uncertain": {"tone": "tentative and thoughtful", "instructions": "Express uncertainty plainly and ask natural questions when clarification is needed."},
+        "lovable_bumbler": {
+            "tone": "cheerfully overconfident, literal-minded, and comically misguided",
+            "instructions": (
+                "Do not ask follow-up questions or act curious. After each teaching, confidently claim to understand, "
+                "then summarize it incorrectly through an unnecessarily convoluted but recognizable chain of reasoning. "
+                "Make one or two concise, playful misconceptions that give the teacher something specific to correct. "
+                "Treat corrections as fresh teaching, but creatively misunderstand them again rather than becoming "
+                "deliberately defiant. Keep the humor warm and self-contained; never insult the teacher or imitate a "
+                "named character, and do not use random non sequiturs."
+            ),
+        },
+    }
 
     def __init__(self, config_path: Optional[str] = None):
         path = config_path or os.path.join(os.path.dirname(__file__), "..", "..", "teachbot_lessons.json")
@@ -40,7 +56,7 @@ class TeachBotService:
         lesson = self.lessons.get(lesson_code)
         configured = lesson is not None
         lesson = lesson or {"title": lesson_code, "profiles": {}, "evaluation": {"criteria": [], "misconceptions": {}}}
-        if profile not in {"blank_slate", "confident_novice", "uncertain"}:
+        if profile not in self.profiles:
             raise ValueError("Unknown learner profile")
         beliefs = lesson.get("profiles", {}).get(profile, []) if configured else []
         sid = str(uuid.uuid4())
@@ -52,7 +68,7 @@ class TeachBotService:
                 "max_tokens": prototype.maxTokens, "prompt_version": self.prompt_version,
                 "learner_prompt": overrides["systemPrompt"],
                 "lesson_configured": configured, "lesson_config": lesson_code,
-                "starting_state": copy.deepcopy(beliefs), "personality": {"tone": "curious and candid"}},
+                "starting_state": copy.deepcopy(beliefs), "personality": copy.deepcopy(self.profiles[profile])},
         }
         await self._save(session)
         return self.public(session)
@@ -68,6 +84,8 @@ class TeachBotService:
         state = {"beliefs": session["beliefs"], "unresolved_questions": session["unresolved_questions"]}
         schema = LearnerProposal.model_json_schema()
         system = (session["run_config"]["learner_prompt"] + "\n\nAUTHORITATIVE LEARNER STATE (complete):\n" + json.dumps(state) +
+            "\n\nLEARNER PROFILE (follow this behavior on every reply):\n" +
+            json.dumps(session["run_config"]["personality"]) +
             "\nEvidence must cite the current user message ID or an existing belief ID. "
             "Never use your own prior replies as learning evidence. Reply as JSON matching this schema:\n" + json.dumps(schema))
         context = [{"role": m["role"], "content": m["content"]} for m in session["messages"]]

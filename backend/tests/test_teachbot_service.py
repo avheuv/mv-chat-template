@@ -46,6 +46,31 @@ def test_vague_disagreement_cannot_supply_replacement_knowledge():
     assert session["beliefs"][0]["statement"] == "Old idea"
 
 
+def test_lovable_bumbler_profile_is_frozen_into_run_and_prompt(monkeypatch):
+    service = TeachBotService()
+    monkeypatch.setattr("app.services.teachbot_service.firestore_service.get_prototype_overrides", lambda *args: async_overrides())
+    monkeypatch.setattr("app.services.teachbot_service.firestore_service.set_document", lambda *args: async_none())
+    session = asyncio.run(service.start("quadratics", "lovable_bumbler"))
+    stored = service._sessions[session["id"]]
+    stored["_pending_content"] = "A quadratic has an x squared term."
+    prompt = service._prompt(stored, "user:1")[0]["content"]
+    assert session["beliefs"] == []
+    assert session["run_config"]["personality"]["tone"].startswith("cheerfully overconfident")
+    assert "Do not ask follow-up questions" in prompt
+    assert "summarize it incorrectly" in prompt
+
+
+def test_unknown_learner_profile_is_rejected(monkeypatch):
+    service = TeachBotService()
+    monkeypatch.setattr("app.services.teachbot_service.firestore_service.get_prototype_overrides", lambda *args: async_overrides())
+    try:
+        asyncio.run(service.start("quadratics", "not-a-profile"))
+    except ValueError as error:
+        assert str(error) == "Unknown learner profile"
+    else:
+        raise AssertionError("Unknown profile was accepted")
+
+
 def test_duplicate_request_snapshot_restore_and_session_isolation(monkeypatch):
     asyncio.run(_duplicate_snapshot_scenario(monkeypatch))
 
@@ -77,3 +102,7 @@ async def _duplicate_snapshot_scenario(monkeypatch):
 
 async def async_none():
     return None
+
+
+async def async_overrides():
+    return {"model": "test-model", "systemPrompt": "Test learner prompt."}

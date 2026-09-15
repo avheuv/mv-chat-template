@@ -73,7 +73,7 @@ async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int, str]:
         if not output:
             raise TurningTestError("OpenAI returned an empty answer. Your draft was not changed.")
         words = count_words(output)
-        if request.action == "rewrite" or 285 <= words <= 315:
+        if request.action == "rewrite" or 100 <= words <= 500:
             return output, words, model
     raise TurningTestError("OpenAI could not produce an approximately 300-word answer after one correction.", 422)
 

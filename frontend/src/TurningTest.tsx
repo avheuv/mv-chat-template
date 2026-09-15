@@ -60,7 +60,6 @@ function Report({ run, stale }: { run: EvalRun; stale: boolean }) {
   const result = run.result; const windows = windowsOf(result);
   return <section className="tt-report" aria-labelledby={`report-${run.run}`}>
     <div className="tt-report-heading"><div><p className="tt-eyebrow">Pangram Report</p><h2 id={`report-${run.run}`}>Evaluation #{run.run}</h2></div>{stale && <span className="tt-stale">Text or prompt changed since this evaluation.</span>}</div>
-    <div className="tt-snapshot"><strong>Evaluated snapshot · {run.wordCount} words</strong><p>{run.text}</p></div>
     <section><h3>Overall result</h3><p><strong>Pangram headline:</strong> {display(result.headline)}</p><p><strong>Pangram classification:</strong> {display(result.prediction_short)}</p><p><strong>Pangram explanation:</strong> {display(result.prediction)}</p></section>
     <section><h3>Text breakdown</h3><p className="tt-context">These are proportions of text classified into categories, not probabilities of cheating.</p><div className="tt-percentages"><span><i className="tt-swatch tt-ai" />AI-written <strong>{percent(fraction(result, 'fraction_ai'))}</strong></span><span><i className="tt-swatch tt-assisted" />AI-assisted <strong>{percent(fraction(result, 'fraction_ai_assisted'))}</strong></span><span><i className="tt-swatch tt-human" />Human-written <strong>{percent(fraction(result, 'fraction_human'))}</strong></span></div></section>
     <section><h3>Highlighted passage</h3><div className="tt-legend" aria-label="Passage classification legend"><span><i className="tt-swatch tt-ai" />AI-written</span><span><i className="tt-swatch tt-assisted" />AI-assisted</span><span><i className="tt-swatch tt-human" />Human-written</span></div><HighlightedPassage result={result} /></section>
@@ -77,18 +76,18 @@ async function jsonRequest(url: string, init?: RequestInit) {
 }
 
 export default function TurningTest() {
-  const [promptId, setPromptId] = useState(''); const [answer, setAnswer] = useState(''); const [undo, setUndo] = useState<string | null>(null);
-  const [rewritePrompt, setRewritePrompt] = useState('Make this passage sound more natural while preserving its meaning.');
+  const [promptId, setPromptId] = useState(''); const [answer, setAnswer] = useState('');
+  const [rewritePrompt, setRewritePrompt] = useState('');
   const [selection, setSelection] = useState({ start: 0, end: 0 }); const answerRef = useRef<HTMLTextAreaElement>(null); const promptRequest = useRef(0);
   const [running, setRunning] = useState<string | null>(null); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [history, setHistory] = useState<EvalRun[]>([]); const [actions, setActions] = useState<string[]>([]); const manualLogged = useRef(false);
   const selected = TURNING_TEST_PROMPTS.find(prompt => prompt.id === promptId); const wordCount = countWords(answer); const latest = history.at(-1);
   const stale = Boolean(latest && (latest.text !== answer || latest.promptId !== promptId));
   const log = (action: string) => setActions(current => [...current, action]);
-  const edit = (value: string, pasted = false) => { setAnswer(value); setUndo(null); setSelection({ start: 0, end: 0 }); if (!manualLogged.current) { log(pasted ? 'Pasted text' : 'Manual edit'); manualLogged.current = true; } };
+  const edit = (value: string, pasted = false) => { setAnswer(value); setSelection({ start: 0, end: 0 }); if (!manualLogged.current) { log(pasted ? 'Pasted text' : 'Manual edit'); manualLogged.current = true; } };
   const captureSelection = () => { const field = answerRef.current; if (field) setSelection({ start: field.selectionStart, end: field.selectionEnd }); };
   const changePrompt = async (value: string) => {
-    const requestId = ++promptRequest.current; setPromptId(value); setAnswer(''); setUndo(null); setSelection({ start: 0, end: 0 }); setError(''); setNotice(''); setHistory([]); setActions([]); manualLogged.current = false;
+    const requestId = ++promptRequest.current; setPromptId(value); setAnswer(''); setSelection({ start: 0, end: 0 }); setError(''); setNotice(''); setHistory([]); setActions([]); manualLogged.current = false;
     const nextPrompt = TURNING_TEST_PROMPTS.find(prompt => prompt.id === value); if (!nextPrompt) return;
     setRunning('generate'); setNotice('Generating your 300-word starting text…');
     try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'generate', prompt_id: nextPrompt.id, question: nextPrompt.question, answer: '' }) }); if (requestId !== promptRequest.current) return; const next = String(data.answer ?? ''); if (!next.trim()) throw new Error('The AI returned an empty answer.'); setAnswer(next); setNotice('Starting text: AI-generated.'); setActions(['AI-generated starting text']); }
@@ -99,10 +98,9 @@ export default function TurningTest() {
     if (running || !selected) return setError('Choose a prompt first.'); const { start, end } = selection;
     if (start === end) { setError('Highlight the text you want to rewrite.'); answerRef.current?.focus(); return; }
     const highlighted = answer.slice(start, end); const previous = answer; setRunning('rewrite'); setError('');
-    try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rewrite', prompt_id: selected.id, question: selected.question, answer: highlighted, custom_prompt: rewritePrompt }) }); const replacement = String(data.answer ?? ''); if (!replacement.trim()) throw new Error('The AI returned an empty rewrite.'); const next = previous.slice(0, start) + replacement + previous.slice(end); setAnswer(next); setUndo(previous); setSelection({ start, end: start + replacement.length }); manualLogged.current = false; log('Rewrote highlighted text'); window.setTimeout(() => { const field = answerRef.current; field?.focus(); field?.setSelectionRange(start, start + replacement.length); }, 0); }
+    try { const data = await jsonRequest(`${API_BASE}/turning-test/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rewrite', prompt_id: selected.id, question: selected.question, answer: highlighted, custom_prompt: rewritePrompt }) }); const replacement = String(data.answer ?? ''); if (!replacement.trim()) throw new Error('The AI returned an empty rewrite.'); const next = previous.slice(0, start) + replacement + previous.slice(end); setAnswer(next); setSelection({ start, end: start + replacement.length }); manualLogged.current = false; log('Rewrote highlighted text'); window.setTimeout(() => { const field = answerRef.current; field?.focus(); field?.setSelectionRange(start, start + replacement.length); }, 0); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Rewrite failed. Your draft was preserved.'); } finally { setRunning(null); }
   };
-  const undoAI = () => { if (undo === null || running) return; setAnswer(undo); setUndo(null); manualLogged.current = false; log('Undo'); };
   const evaluate = async () => {
     if (running || !selected || wordCount < EVALUATION_MIN_WORDS) return; setRunning('evaluation'); setError(''); const snapshot = { promptId: selected.id, question: selected.question, text: answer, wordCount, actions: [...actions] };
     try { const submitted = await jsonRequest(`${API_BASE}/turning-test/pangram`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: snapshot.text }) }); const taskId = String(submitted.task_id); const requestedModel = String(submitted.requested_model); let response = submitted.response as Json; let stage = stageOf(response);
@@ -115,12 +113,10 @@ export default function TurningTest() {
   return <div className="tt-shell"><main className="tt-main">
     <header className="tt-intro"><h1>Turning Test</h1><p>Can you make AI-written text pass as human?</p></header>
     <section className="tt-card tt-compose"><label htmlFor="tt-prompt"><strong>Select a prompt</strong></label><select id="tt-prompt" value={promptId} onChange={event => changePrompt(event.target.value)} disabled={Boolean(running)}><option value="">Choose a prompt</option>{TURNING_TEST_PROMPTS.map(prompt => <option key={prompt.id} value={prompt.id}>{prompt.subject}: {prompt.question}</option>)}</select>{notice && <p className="tt-notice" role="status">{notice}</p>}
-      <p className="tt-instructions">Edit it yourself or highlight a passage and use the AI Rewrite tool. When you’re ready, see what Pangram thinks.</p>
       <label htmlFor="tt-answer"><strong>Your answer</strong></label><textarea ref={answerRef} id="tt-answer" value={answer} onChange={event => edit(event.target.value)} onSelect={captureSelection} onKeyUp={captureSelection} onMouseUp={captureSelection} onPaste={() => { if (!manualLogged.current) { log('Pasted text'); manualLogged.current = true; } }} disabled={Boolean(running)} placeholder={selected ? 'Your AI-generated starting text will appear here…' : 'Choose a prompt to generate starting text…'} />
       <p className={`tt-count ${wordCount < EVALUATION_MIN_WORDS ? 'short' : ''}`}>{wordCount} words · Starting target: 300 · Pangram minimum: {EVALUATION_MIN_WORDS}</p>
-      <div className="tt-tools-heading"><h2>AI Tool: Rewrite</h2><button type="button" className="tt-link" onClick={undoAI} disabled={undo === null || Boolean(running)}>Undo AI edit</button></div>
-      <p className="tt-tool-help">Highlight only the passage you want to change, then tell the AI how to rewrite it. Rewrite never changes the whole document unless you select the whole document.</p>
-      <label htmlFor="tt-rewrite-prompt"><strong>Rewrite instructions</strong></label><textarea className="tt-rewrite-prompt" id="tt-rewrite-prompt" value={rewritePrompt} onChange={event => setRewritePrompt(event.target.value)} disabled={Boolean(running)} />
+      <p className="tt-tool-help">1. Enter rewrite instructions. 2. Highlight text above. 3. Click Rewrite.</p>
+      <label htmlFor="tt-rewrite-prompt"><strong>Rewrite instructions</strong></label><textarea className="tt-rewrite-prompt" id="tt-rewrite-prompt" value={rewritePrompt} onChange={event => setRewritePrompt(event.target.value)} disabled={Boolean(running)} placeholder="How should this selection be rewritten?" />
       <div className="tt-tools"><button type="button" onMouseDown={event => event.preventDefault()} onClick={rewriteSelection} disabled={Boolean(running) || !selected}>{running === 'rewrite' ? 'Rewriting selection…' : 'Rewrite highlighted text'}</button></div>
       <button type="button" className="tt-evaluate" onClick={evaluate} disabled={Boolean(running) || !selected || wordCount < EVALUATION_MIN_WORDS}>{running === 'evaluation' ? 'Pangram is evaluating…' : 'Run Pangram Eval'}</button>{wordCount < EVALUATION_MIN_WORDS && <p className="tt-guidance">Add {EVALUATION_MIN_WORDS - wordCount} more {EVALUATION_MIN_WORDS - wordCount === 1 ? 'word' : 'words'} to enable evaluation. Text is never padded automatically.</p>}{error && <p className="tt-error" role="alert">{error}</p>}
     </section>

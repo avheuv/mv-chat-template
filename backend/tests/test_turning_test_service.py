@@ -37,6 +37,16 @@ def test_generate_prompt_requests_approximately_300_words():
     assert "Why is the sky blue?" in messages[1]["content"]
 
 
+def test_corrective_generate_prompt_uses_accepted_word_range():
+    request = TurningTestAIRequest(
+        action="generate", prompt_id="science", question="Why is the sky blue?", answer=""
+    )
+
+    messages = service._input(request, corrective=True)
+
+    assert "100–500 words" in messages[0]["content"]
+
+
 def test_rewrite_prompt_contains_only_selected_passage_and_custom_instruction():
     request = TurningTestAIRequest(
         action="rewrite",
@@ -68,6 +78,26 @@ def test_rewrite_returns_without_enforcing_generation_word_count(monkeypatch):
     )
 
     assert asyncio.run(service.run_ai_action(request)) == ("A concise replacement.", 3, "gpt-4o-mini")
+
+
+@pytest.mark.parametrize("word_count", [100, 500])
+def test_generate_accepts_word_count_boundaries(monkeypatch, word_count):
+    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+
+    class Response:
+        output_text = "word " * word_count
+
+    async def create(**kwargs):
+        return Response()
+
+    monkeypatch.setattr(service.client.responses, "create", create)
+    request = TurningTestAIRequest(
+        action="generate", prompt_id="science", question="A question", answer=""
+    )
+
+    _, returned_word_count, _ = asyncio.run(service.run_ai_action(request))
+
+    assert returned_word_count == word_count
 
 
 def test_pangram_defaults_to_current_text_api():

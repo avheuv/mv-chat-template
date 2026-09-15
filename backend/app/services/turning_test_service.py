@@ -50,7 +50,7 @@ async def get_turning_test_config() -> Dict[str, Any]:
 def _input(request: TurningTestAIRequest, corrective: bool = False) -> list[dict[str, str]]:
     instruction = ACTION_INSTRUCTIONS[request.action]
     if corrective:
-        instruction += " Your previous result was outside the required range. Revise it once to contain 285–315 words."
+        instruction += " Your previous result was outside the required range. Revise it once to contain 100–500 words."
     rewrite_instructions = request.custom_prompt.strip() or "Make the passage sound more natural while preserving its meaning."
     return [
         {"role": "system", "content": instruction + " Return only the requested text, with no preamble, quotes, commentary, or Markdown."},
@@ -75,7 +75,7 @@ async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int, str]:
         words = count_words(output)
         if request.action == "rewrite" or 100 <= words <= 500:
             return output, words, model
-    raise TurningTestError("OpenAI could not produce an approximately 300-word answer after one correction.", 422)
+    raise TurningTestError("OpenAI could not produce a 100–500-word answer after one correction.", 422)
 
 
 def _pangram_headers() -> dict[str, str]:

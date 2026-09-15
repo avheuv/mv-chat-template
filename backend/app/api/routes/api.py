@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.models.teachbot import RestoreRequest, SnapshotRequest, TeachBotStartRequest, TeachBotTurnRequest
 from app.services.teachbot_service import teachbot_service
 from app.models.turning_test import PangramSubmitRequest, PangramTaskResponse, TurningTestAIRequest, TurningTestAIResponse
-from app.services.turning_test_service import TurningTestError, count_words, get_pangram_task, run_ai_action, submit_pangram
+from app.services.turning_test_service import TurningTestError, count_words, generate_starting_text, get_pangram_task, submit_pangram
 import httpx
 
 router = APIRouter()
@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 @router.post("/api/turning-test/ai", response_model=TurningTestAIResponse)
 async def turning_test_ai(request: TurningTestAIRequest):
     try:
-        answer, word_count, model = await run_ai_action(request)
+        answer, word_count, model = await generate_starting_text(request)
         return TurningTestAIResponse(answer=answer, word_count=word_count, model=model)
     except TurningTestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception:
         logger.exception("Turning Test OpenAI request failed")
-        raise HTTPException(status_code=502, detail="OpenAI could not complete the action. Your draft was not changed.")
+        raise HTTPException(status_code=502, detail="OpenAI could not generate the starting text.")
 
 
 @router.post("/api/turning-test/pangram", response_model=PangramTaskResponse)

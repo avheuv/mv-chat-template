@@ -4,7 +4,20 @@ import httpx
 import pytest
 
 from app.core.config import settings
+from app.core.prototype_loader import prototype_loader
 from app.services import turning_test_service as service
+
+
+@pytest.fixture(autouse=True)
+def turning_test_config(monkeypatch):
+    config = prototype_loader.get_prototype("turning_test").config.copy()
+    config["openaiModel"] = prototype_loader.get_prototype("turning_test").model
+
+    async def get_config():
+        return config
+
+    monkeypatch.setattr(service, "get_turning_test_config", get_config)
+    return config
 
 
 def test_count_words_ignores_repeated_whitespace():
@@ -13,14 +26,16 @@ def test_count_words_ignores_repeated_whitespace():
 
 
 def test_pangram_defaults_to_current_text_api():
-    assert settings.pangram_api_base_url == "https://text.external-api.pangram.com"
-    assert settings.pangram_model == "pangram-4"
+    config = prototype_loader.get_prototype("turning_test").config
+    assert config["pangramApiBaseUrl"] == "https://text.external-api.pangram.com"
+    assert config["pangramModel"] == "pangram-4"
+    assert prototype_loader.get_prototype("turning_test").model == "gpt-4o-mini"
+    assert config["evaluationMinWords"] == 50
 
 
-def test_submit_pangram_uses_current_endpoint_and_api_key_header(monkeypatch):
+def test_submit_pangram_uses_current_endpoint_and_api_key_header(monkeypatch, turning_test_config):
     monkeypatch.setattr(settings, "pangram_api_key", "test-key")
-    monkeypatch.setattr(settings, "pangram_model", "pangram-4")
-    monkeypatch.setattr(settings, "turning_test_evaluation_min_words", 2)
+    turning_test_config["evaluationMinWords"] = 2
     request = {}
 
     async def fake_post(self, url, **kwargs):
@@ -28,10 +43,11 @@ def test_submit_pangram_uses_current_endpoint_and_api_key_header(monkeypatch):
         return httpx.Response(200, json={"task_id": "task-1"}, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
-    task_id, payload = asyncio.run(service.submit_pangram("enough words"))
+    task_id, payload, model = asyncio.run(service.submit_pangram("enough words"))
 
     assert task_id == "task-1"
     assert payload == {"task_id": "task-1"}
+    assert model == "pangram-4"
     assert request["url"] == "https://text.external-api.pangram.com/task"
     assert request["headers"] == {"x-api-key": "test-key", "Content-Type": "application/json"}
     assert request["json"] == {"text": "enough words", "model": "pangram-4"}
@@ -39,7 +55,6 @@ def test_submit_pangram_uses_current_endpoint_and_api_key_header(monkeypatch):
 
 def test_get_pangram_task_uses_current_endpoint_and_api_key_header(monkeypatch):
     monkeypatch.setattr(settings, "pangram_api_key", "test-key")
-    monkeypatch.setattr(settings, "pangram_model", "pangram-4")
     request = {}
 
     async def fake_get(self, url, **kwargs):
@@ -47,14 +62,14 @@ def test_get_pangram_task_uses_current_endpoint_and_api_key_header(monkeypatch):
         return httpx.Response(200, json={"stage": "STAGE_SUCCESS"}, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
-    assert asyncio.run(service.get_pangram_task("task-1")) == {"stage": "STAGE_SUCCESS"}
+    assert asyncio.run(service.get_pangram_task("task-1")) == ({"stage": "STAGE_SUCCESS"}, "pangram-4")
     assert request["url"] == "https://text.external-api.pangram.com/task/task-1"
     assert request["headers"] == {"x-api-key": "test-key", "Content-Type": "application/json"}
 
 
-def test_failed_pangram_task_is_an_error(monkeypatch):
+def test_failed_pangram_task_is_an_error(monkeypatch, turning_test_config):
     monkeypatch.setattr(settings, "pangram_api_key", "test-key")
-    monkeypatch.setattr(settings, "pangram_model", "test-model")
+    turning_test_config["pangramModel"] = "test-model"
 
     async def fake_get(self, url, **kwargs):
         return httpx.Response(200, json={"stage": "STAGE_FAILED", "error": "provider failure"}, request=httpx.Request("GET", url))
@@ -64,9 +79,9 @@ def test_failed_pangram_task_is_an_error(monkeypatch):
         asyncio.run(service.get_pangram_task("task-1"))
 
 
-def test_success_response_is_preserved_including_zero_false_and_extra_fields(monkeypatch):
+def test_success_response_is_preserved_including_zero_false_and_extra_fields(monkeypatch, turning_test_config):
     monkeypatch.setattr(settings, "pangram_api_key", "test-key")
-    monkeypatch.setattr(settings, "pangram_model", "test-model")
+    turning_test_config["pangramModel"] = "test-model"
     payload = {
         "stage": "STAGE_SUCCESS", "fraction_ai": 0, "is_humanized": False,
         "extra_future_field": {"kept": True},
@@ -76,7 +91,7 @@ def test_success_response_is_preserved_including_zero_false_and_extra_fields(mon
         return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
-    assert asyncio.run(service.get_pangram_task("task-1")) == payload
+    assert asyncio.run(service.get_pangram_task("task-1")) == (payload, "test-model")
 
 
 def test_provider_validation_error_includes_pangram_detail():

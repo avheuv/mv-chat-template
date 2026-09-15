@@ -6,6 +6,10 @@ systemPrompt: Turning Test uses dedicated action prompts in the backend service.
 model: gpt-4o-mini
 temperature: 0.2
 maxTokens: 500
+config:
+  pangramModel: pangram-4
+  pangramApiBaseUrl: https://text.external-api.pangram.com
+  evaluationMinWords: 50
 ui:
   title: Turning Test
   subtitle: Explore how writing and AI-assisted editing affect a detector's output.

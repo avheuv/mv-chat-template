@@ -3,7 +3,9 @@ from typing import Any, Dict
 import httpx
 
 from app.core.config import settings
+from app.core.prototype_loader import prototype_loader
 from app.models.turning_test import TurningTestAIRequest
+from app.services.firestore_service import firestore_service
 from app.services.llm_service import client
 
 
@@ -35,6 +37,22 @@ ACTION_INSTRUCTIONS = {
 }
 
 
+async def get_turning_test_config() -> Dict[str, Any]:
+    prototype = prototype_loader.get_prototype("turning_test")
+    if not prototype:
+        raise TurningTestError("Turning Test configuration is unavailable.", 503)
+    overrides = await firestore_service.get_prototype_overrides(
+        prototype.id,
+        prototype.systemPrompt,
+        prototype.model,
+        prototype.stagePrompts,
+        prototype.config,
+    )
+    config = overrides["config"]
+    config["openaiModel"] = overrides["model"]
+    return config
+
+
 def _input(request: TurningTestAIRequest, corrective: bool = False) -> list[dict[str, str]]:
     instruction = ACTION_INSTRUCTIONS[request.action]
     if corrective:
@@ -46,12 +64,14 @@ def _input(request: TurningTestAIRequest, corrective: bool = False) -> list[dict
     ]
 
 
-async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int]:
+async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int, str]:
     if not settings.openai_api_key:
         raise TurningTestError("OpenAI is not configured. Set OPENAI_API_KEY on the server.", 503)
+    config = await get_turning_test_config()
+    model = str(config["openaiModel"])
     for attempt in range(2):
         response = await client.responses.create(
-            model=settings.turning_test_openai_model,
+            model=model,
             input=_input(request, corrective=attempt == 1),
             max_output_tokens=500,
         )
@@ -60,7 +80,7 @@ async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int]:
             raise TurningTestError("OpenAI returned an empty answer. Your draft was not changed.")
         words = count_words(output)
         if request.action == "grammar" or 60 <= words <= 100:
-            return output, words
+            return output, words, model
     raise TurningTestError("OpenAI could not produce a 60–100 word answer after one correction. Your draft was not changed.", 422)
 
 
@@ -85,17 +105,21 @@ def _provider_error(response: httpx.Response) -> TurningTestError:
     return TurningTestError(f"Pangram rejected the request (HTTP {response.status_code}).{suffix}", 502)
 
 
-async def submit_pangram(text: str) -> tuple[str, Dict[str, Any]]:
-    if count_words(text) < settings.turning_test_evaluation_min_words:
-        raise TurningTestError(f"Pangram evaluation requires at least {settings.turning_test_evaluation_min_words} words.", 422)
-    if not settings.pangram_api_key or not settings.pangram_model:
-        raise TurningTestError("Pangram is not configured. Set PANGRAM_API_KEY and PANGRAM_MODEL on the server.", 503)
+async def submit_pangram(text: str) -> tuple[str, Dict[str, Any], str]:
+    config = await get_turning_test_config()
+    minimum_words = int(config["evaluationMinWords"])
+    model = str(config["pangramModel"])
+    base_url = str(config["pangramApiBaseUrl"])
+    if count_words(text) < minimum_words:
+        raise TurningTestError(f"Pangram evaluation requires at least {minimum_words} words.", 422)
+    if not settings.pangram_api_key:
+        raise TurningTestError("Pangram is not configured. Set PANGRAM_API_KEY on the server.", 503)
     try:
         async with httpx.AsyncClient(timeout=20) as http:
             response = await http.post(
-                f"{settings.pangram_api_base_url.rstrip('/')}/task",
+                f"{base_url.rstrip('/')}/task",
                 headers=_pangram_headers(),
-                json={"text": text, "model": settings.pangram_model},
+                json={"text": text, "model": model},
             )
     except httpx.TimeoutException as exc:
         raise TurningTestError("Pangram submission timed out. Try again.", 504) from exc
@@ -105,15 +129,18 @@ async def submit_pangram(text: str) -> tuple[str, Dict[str, Any]]:
     task_id = data.get("task_id") or data.get("id")
     if not task_id:
         raise TurningTestError("Pangram did not return a task ID.")
-    return str(task_id), data
+    return str(task_id), data, model
 
 
-async def get_pangram_task(task_id: str) -> Dict[str, Any]:
-    if not settings.pangram_api_key or not settings.pangram_model:
+async def get_pangram_task(task_id: str) -> tuple[Dict[str, Any], str]:
+    config = await get_turning_test_config()
+    model = str(config["pangramModel"])
+    base_url = str(config["pangramApiBaseUrl"])
+    if not settings.pangram_api_key:
         raise TurningTestError("Pangram is not configured on the server.", 503)
     try:
         async with httpx.AsyncClient(timeout=20) as http:
-            response = await http.get(f"{settings.pangram_api_base_url.rstrip('/')}/task/{task_id}", headers=_pangram_headers())
+            response = await http.get(f"{base_url.rstrip('/')}/task/{task_id}", headers=_pangram_headers())
     except httpx.TimeoutException as exc:
         raise TurningTestError("Pangram status check timed out. Try again.", 504) from exc
     if not response.is_success:
@@ -122,4 +149,4 @@ async def get_pangram_task(task_id: str) -> Dict[str, Any]:
     stage = str(data.get("stage") or data.get("status") or "").upper()
     if stage == "STAGE_FAILED":
         raise TurningTestError("Pangram could not complete this evaluation. No score was recorded.")
-    return data
+    return data, model

@@ -42,6 +42,7 @@ class PrototypeConfig(BaseModel):
     tools: Optional[List[Dict[str, Any]]] = None
     saveHandler: Optional[str] = None
     reasoning: Optional[Dict[str, Any]] = None
+    config: Dict[str, Any] = Field(default_factory=dict)
     ui: PrototypeUIConfig = Field(default_factory=PrototypeUIConfig)
 
 class PrototypeLoader:

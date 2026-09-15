@@ -19,16 +19,10 @@ class TurningTestError(Exception):
         self.status_code = status_code
 
 
-ACTION_INSTRUCTIONS = {
-    "generate": (
-        "Write a clear, accurate answer to the academic question in approximately 300 words. Use ordinary "
-        "language suitable for a general audience. Include useful examples or explanation where appropriate."
-    ),
-    "rewrite": (
-        "Rewrite only the highlighted passage according to the user's rewrite instructions. Preserve its core meaning "
-        "and keep the result proportionate to the selected passage unless the user explicitly requests otherwise."
-    ),
-}
+GENERATION_INSTRUCTION = (
+    "Write a clear, accurate answer to the academic question in approximately 300 words. Use ordinary "
+    "language suitable for a general audience. Include useful examples or explanation where appropriate."
+)
 
 
 async def get_turning_test_config() -> Dict[str, Any]:
@@ -48,17 +42,16 @@ async def get_turning_test_config() -> Dict[str, Any]:
 
 
 def _input(request: TurningTestAIRequest, corrective: bool = False) -> list[dict[str, str]]:
-    instruction = ACTION_INSTRUCTIONS[request.action]
+    instruction = GENERATION_INSTRUCTION
     if corrective:
         instruction += " Your previous result was outside the required range. Revise it once to contain 100–500 words."
-    rewrite_instructions = request.custom_prompt.strip() or "Make the passage sound more natural while preserving its meaning."
     return [
         {"role": "system", "content": instruction + " Return only the requested text, with no preamble, quotes, commentary, or Markdown."},
-        {"role": "user", "content": f"<question>\n{request.question}\n</question>\n<highlighted_text>\n{request.answer}\n</highlighted_text>\n<rewrite_instructions>\n{rewrite_instructions}\n</rewrite_instructions>"},
+        {"role": "user", "content": f"<question>\n{request.question}\n</question>"},
     ]
 
 
-async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int, str]:
+async def generate_starting_text(request: TurningTestAIRequest) -> tuple[str, int, str]:
     if not settings.openai_api_key:
         raise TurningTestError("OpenAI is not configured. Set OPENAI_API_KEY on the server.", 503)
     config = await get_turning_test_config()
@@ -71,9 +64,9 @@ async def run_ai_action(request: TurningTestAIRequest) -> tuple[str, int, str]:
         )
         output = response.output_text.strip()
         if not output:
-            raise TurningTestError("OpenAI returned an empty answer. Your draft was not changed.")
+            raise TurningTestError("OpenAI returned an empty answer. No starting text was created.")
         words = count_words(output)
-        if request.action == "rewrite" or 100 <= words <= 500:
+        if 100 <= words <= 500:
             return output, words, model
     raise TurningTestError("OpenAI could not produce a 100–500-word answer after one correction.", 422)
 

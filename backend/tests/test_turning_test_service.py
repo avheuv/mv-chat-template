@@ -2,6 +2,7 @@ import asyncio
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import settings
 from app.core.prototype_loader import prototype_loader
@@ -28,7 +29,7 @@ def test_count_words_ignores_repeated_whitespace():
 
 def test_generate_prompt_requests_approximately_300_words():
     request = TurningTestAIRequest(
-        action="generate", prompt_id="science", question="Why is the sky blue?", answer=""
+        prompt_id="science", question="Why is the sky blue?"
     )
 
     messages = service._input(request)
@@ -39,7 +40,7 @@ def test_generate_prompt_requests_approximately_300_words():
 
 def test_corrective_generate_prompt_uses_accepted_word_range():
     request = TurningTestAIRequest(
-        action="generate", prompt_id="science", question="Why is the sky blue?", answer=""
+        prompt_id="science", question="Why is the sky blue?"
     )
 
     messages = service._input(request, corrective=True)
@@ -47,37 +48,15 @@ def test_corrective_generate_prompt_uses_accepted_word_range():
     assert "100–500 words" in messages[0]["content"]
 
 
-def test_rewrite_prompt_contains_only_selected_passage_and_custom_instruction():
-    request = TurningTestAIRequest(
-        action="rewrite",
-        prompt_id="science",
-        question="Why is the sky blue?",
-        answer="This is the selected sentence.",
-        custom_prompt="Use shorter sentences.",
-    )
-
-    messages = service._input(request)
-
-    assert "This is the selected sentence." in messages[1]["content"]
-    assert "Use shorter sentences." in messages[1]["content"]
-    assert "highlighted passage" in messages[0]["content"]
-
-
-def test_rewrite_returns_without_enforcing_generation_word_count(monkeypatch):
-    monkeypatch.setattr(settings, "openai_api_key", "test-key")
-
-    class Response:
-        output_text = "A concise replacement."
-
-    async def create(**kwargs):
-        return Response()
-
-    monkeypatch.setattr(service.client.responses, "create", create)
-    request = TurningTestAIRequest(
-        action="rewrite", prompt_id="science", question="A question", answer="Selected text"
-    )
-
-    assert asyncio.run(service.run_ai_action(request)) == ("A concise replacement.", 3, "gpt-4o-mini")
+def test_generation_request_rejects_removed_rewrite_fields():
+    with pytest.raises(ValidationError):
+        TurningTestAIRequest(
+            prompt_id="science",
+            question="Why is the sky blue?",
+            action="rewrite",
+            answer="Selected text",
+            custom_prompt="Use shorter sentences.",
+        )
 
 
 @pytest.mark.parametrize("word_count", [100, 500])
@@ -92,10 +71,10 @@ def test_generate_accepts_word_count_boundaries(monkeypatch, word_count):
 
     monkeypatch.setattr(service.client.responses, "create", create)
     request = TurningTestAIRequest(
-        action="generate", prompt_id="science", question="A question", answer=""
+        prompt_id="science", question="A question"
     )
 
-    _, returned_word_count, _ = asyncio.run(service.run_ai_action(request))
+    _, returned_word_count, _ = asyncio.run(service.generate_starting_text(request))
 
     assert returned_word_count == word_count
 

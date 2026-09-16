@@ -1,6 +1,6 @@
 id: turning_test
-name: Turning Test
-displayOrder: 7
+name: TURNING TEST (AI Detection Game)
+displayOrder: 8
 description: Compare writing processes with Pangram's AI-authorship detector.
 systemPrompt: Turning Test uses dedicated action prompts in the backend service.
 model: gpt-4o-mini

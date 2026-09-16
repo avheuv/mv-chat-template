@@ -60,7 +60,7 @@ class PrototypeLoader:
         for filename in os.listdir(self.prototypes_dir):
             if filename.endswith(".yaml") or filename.endswith(".yml"):
                 filepath = os.path.join(self.prototypes_dir, filename)
-                with open(filepath, 'r') as f:
+                with open(filepath, 'r', encoding="utf-8") as f:
                     try:
                         data = yaml.safe_load(f)
                         if "id" not in data:

@@ -1,6 +1,6 @@
 id: teachbot
-name: TEACHBOT
-displayOrder: 15
+name: DUMBOT (Learning by Teaching)
+displayOrder: 7
 description: Learning by Teaching an AI Learner
 systemPrompt: |
   You are TeachBot, a simulated learner. The human is your teacher. Your complete

@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import TeachBot from './TeachBot';
 import TurningTest from './TurningTest';
+import BloodborneLearning from './BloodborneLearning';
 
 // Use environment variable for production, fallback to local dev server
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -26,7 +27,7 @@ type Prototype = {
     subtitle: string;
     placeholder: string;
     readonly: boolean;
-    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment' | 'twenty_questions' | 'teachbot' | 'turning_test';
+    mode?: 'chat' | 'voice_assessment' | 'sketch' | 'course_factory' | 'meryl' | 'chat_based_assessment' | 'twenty_questions' | 'teachbot' | 'turning_test' | 'bloodborne_learning';
     glassbox?: boolean;
     inlineReasoning?: boolean;
     inputs: UIInputConfig[];
@@ -1495,6 +1496,7 @@ ${getSketchCoachingFocus()}`
   if (view === 'splash' && activePrototypeUI) {
     if (activePrototypeUI.mode === 'turning_test') return <TurningTest />;
     if (activePrototypeUI.mode === 'teachbot') return <TeachBot topics={activePrototypeUI.inputs.find(input => input.id === 'lesson_code')?.options || []} onExit={() => setView('landing')} />;
+    if (activePrototypeUI.mode === 'bloodborne_learning') return <BloodborneLearning onExit={() => setView('landing')} />;
     if (activePrototypeUI.mode === 'twenty_questions') return (
       <div className="act-app-shell glassbox-shell">
         <header className="act-app-header"><div className="act-brand">GLASSBOX</div></header>
